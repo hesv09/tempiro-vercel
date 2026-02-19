@@ -1,6 +1,9 @@
 """PUT /api/switch - Slår på/av en enhet via Tempiro API."""
 from http.server import BaseHTTPRequestHandler
 import json
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
 from _tempiro import switch_device
 
 

@@ -1,11 +1,14 @@
 """GET /api/sync - Synkar data från Tempiro API och spotpriser till Supabase.
-Körs automatiskt var 15:e minut via Vercel Cron Job."""
+Körs automatiskt en gång per dag via Vercel Cron Job."""
 from http.server import BaseHTTPRequestHandler
 from datetime import datetime, timedelta
 import json
 import requests
+import sys
+import os
+sys.path.insert(0, os.path.dirname(__file__))
 from _db import get_db
-from _tempiro import get_devices, get_device_values, get_token
+from _tempiro import get_devices, get_device_values
 
 
 PRICE_AREA = "SE3"
