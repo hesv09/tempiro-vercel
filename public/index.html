@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tempiro Energianalys</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f1117;
+            --card: #1a1d27;
+            --border: #2a2d3a;
+            --text: #e4e4e7;
+            --muted: #8b8d97;
+            --accent: #3b82f6;
+            --green: #22c55e;
+            --red: #ef4444;
+            --amber: #f59e0b;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .header h1 { font-size: 1.4rem; font-weight: 600; }
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+        .dot.offline { background: var(--red); }
+
+        .period-btns { display: flex; gap: 6px; }
+        .period-btn {
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: transparent;
+            color: var(--muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .period-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .period-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .summary-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .summary-value { font-size: 2rem; font-weight: 700; }
+        .summary-value.energy { color: var(--accent); }
+        .summary-value.cost { color: var(--amber); }
+        .summary-value.price { color: var(--green); }
+        .summary-label { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+        .devices-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .device-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .device-name { font-size: 1.2rem; font-weight: 600; }
+        .device-status { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+        .indicator { width: 10px; height: 10px; border-radius: 50%; }
+        .indicator.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        .indicator.off { background: var(--red); }
+        .device-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+        .stat-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-value { font-size: 1.1rem; font-weight: 600; margin-top: 2px; }
+        .switch-btn {
+            width: 100%; padding: 10px; border: 1px solid var(--border);
+            border-radius: 8px; font-size: 0.9rem; font-weight: 500;
+            cursor: pointer; transition: all 0.2s;
+        }
+        .switch-btn.on { background: rgba(239,68,68,0.1); color: var(--red); border-color: rgba(239,68,68,0.3); }
+        .switch-btn.on:hover { background: rgba(239,68,68,0.2); }
+        .switch-btn.off { background: rgba(34,197,94,0.1); color: var(--green); border-color: rgba(34,197,94,0.3); }
+        .switch-btn.off:hover { background: rgba(34,197,94,0.2); }
+        .switch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .card h2 { font-size: 0.95rem; font-weight: 500; color: var(--muted); margin-bottom: 16px; }
+        .chart-container { position: relative; height: 280px; }
+
+        @media (max-width: 600px) {
+            body { padding: 12px; }
+            .summary-value { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>⚡ Tempiro Energianalys</h1>
+        <div class="header-right">
+            <div class="period-btns">
+                <button class="period-btn active" onclick="setPeriod(1, this)">1 dag</button>
+                <button class="period-btn" onclick="setPeriod(7, this)">7 dagar</button>
+                <button class="period-btn" onclick="setPeriod(30, this)">30 dagar</button>
+                <button class="period-btn" onclick="setPeriod(90, this)">90 dagar</button>
+            </div>
+            <div class="status">
+                <div class="dot" id="dot"></div>
+                <span id="statusText">Ansluter...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summering -->
+    <div class="summary-grid">
+        <div class="summary-card">
+            <div class="summary-value energy" id="totalEnergy">--</div>
+            <div class="summary-label">Energi (kWh)</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-value cost" id="totalCost">--</div>
+            <div class="summary-label">Kostnad (kr)</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-value price" id="currentPrice">--</div>
+            <div class="summary-label">Elpris nu (öre/kWh)</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-value" id="activeDevices" style="color: var(--green)">--</div>
+            <div class="summary-label">Aktiva säkringar</div>
+        </div>
+    </div>
+
+    <!-- Enhetskort -->
+    <div class="devices-grid" id="devicesGrid">
+        <div style="color: var(--muted); padding: 20px;">Laddar enheter...</div>
+    </div>
+
+    <!-- Graf: Effekt -->
+    <div class="card">
+        <h2>Effekt (W)</h2>
+        <div class="chart-container">
+            <canvas id="powerChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Graf: Spotpris -->
+    <div class="card">
+        <h2>Spotpris SE3 (öre/kWh)</h2>
+        <div class="chart-container">
+            <canvas id="priceChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Graf: Daglig energi -->
+    <div class="card">
+        <h2>Daglig energiförbrukning (kWh)</h2>
+        <div class="chart-container">
+            <canvas id="dailyChart"></canvas>
+        </div>
+    </div>
+
+<script>
+const COLORS = ['#3b82f6', '#22c55e', '#f59e0b'];
+let currentDays = 1;
+let devices = [];
+let energyData = [];
+let priceData = [];
+let powerChart, priceChart, dailyChart;
+
+function setPeriod(days, btn) {
+    currentDays = days;
+    document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadEnergyAndPrices();
+}
+
+function setStatus(ok, text) {
+    document.getElementById('dot').className = 'dot' + (ok ? '' : ' offline');
+    document.getElementById('statusText').textContent = text;
+}
+
+// === Enheter (realtid från Tempiro API) ===
+async function loadDevices() {
+    try {
+        const resp = await fetch('/api/devices');
+        if (!resp.ok) throw new Error(resp.statusText);
+        devices = await resp.json();
+        renderDevices();
+        updateSummaryDevices();
+        setStatus(true, 'Ansluten ' + new Date().toLocaleTimeString('sv-SE'));
+    } catch (e) {
+        setStatus(false, 'Ingen anslutning');
+    }
+}
+
+function renderDevices() {
+    document.getElementById('devicesGrid').innerHTML = devices.map((d, i) => `
+        <div class="device-card">
+            <div class="device-header">
+                <span class="device-name">${d.name}</span>
+                <div class="device-status">
+                    <div class="indicator ${d.value ? 'on' : 'off'}"></div>
+                    ${d.value ? 'PÅ' : 'AV'}
+                </div>
+            </div>
+            <div class="device-stats">
+                <div>
+                    <div class="stat-label">Effekt</div>
+                    <div class="stat-value" style="color: ${d.currentPower > 0 ? 'var(--green)' : 'var(--muted)'}">
+                        ${d.currentPower || 0} W
+                    </div>
+                </div>
+                <div>
+                    <div class="stat-label">Aktiva timmar</div>
+                    <div class="stat-value">${d.hoursActive || 0} h</div>
+                </div>
+                <div>
+                    <div class="stat-label">Batteri</div>
+                    <div class="stat-value" style="color: ${d.batteryOK ? 'var(--green)' : 'var(--red)'}">
+                        ${d.batteryOK ? 'OK' : 'LÅG'}
+                    </div>
+                </div>
+                <div>
+                    <div class="stat-label">Senast sedd</div>
+                    <div class="stat-value" style="font-size: 0.85rem">
+                        ${d.lastUpdate ? new Date(d.lastUpdate).toLocaleTimeString('sv-SE', {hour:'2-digit', minute:'2-digit'}) : '--'}
+                    </div>
+                </div>
+            </div>
+            <button class="switch-btn ${d.value ? 'on' : 'off'}"
+                    id="btn-${d.id}"
+                    onclick="toggleDevice('${d.id}', ${d.value ? 0 : 1})">
+                ${d.value ? 'Stäng av' : 'Slå på'}
+            </button>
+        </div>
+    `).join('');
+}
+
+async function toggleDevice(deviceId, value) {
+    const btn = document.getElementById(`btn-${deviceId}`);
+    btn.disabled = true;
+    btn.textContent = 'Väntar...';
+    try {
+        await fetch('/api/switch', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({device_id: deviceId, value})
+        });
+        setTimeout(loadDevices, 2000);
+    } catch(e) {
+        btn.textContent = 'Fel!';
+        setTimeout(loadDevices, 3000);
+    }
+}
+
+function updateSummaryDevices() {
+    const active = devices.filter(d => d.value).length;
+    document.getElementById('activeDevices').textContent = `${active}/${devices.length}`;
+}
+
+// === Energi + Spotpriser från Supabase ===
+async function loadEnergyAndPrices() {
+    try {
+        const [energyResp, priceResp] = await Promise.all([
+            fetch(`/api/energy?days=${currentDays}`),
+            fetch(`/api/prices?days=${currentDays}`)
+        ]);
+        energyData = await energyResp.json();
+        priceData = await priceResp.json();
+
+        renderPowerChart();
+        renderPriceChart();
+        renderDailyChart();
+        updateSummaryEnergy();
+    } catch(e) {
+        console.error('Kunde inte ladda energidata:', e);
+    }
+}
+
+function updateSummaryEnergy() {
+    // Total energi (kWh)
+    const totalKwh = energyData.reduce((sum, r) => sum + (r.delta_power || 0), 0);
+    document.getElementById('totalEnergy').textContent = totalKwh.toFixed(1);
+
+    // Aktuellt elpris
+    if (priceData.length > 0) {
+        const now = new Date();
+        const current = priceData.find(p => {
+            const t = new Date(p.timestamp);
+            const next = new Date(t.getTime() + 3600000);
+            return now >= t && now < next;
+        });
+        if (current) {
+            document.getElementById('currentPrice').textContent =
+                (current.price_sek * 100).toFixed(1);
+        }
+
+        // Beräkna kostnad per timme
+        let totalCost = 0;
+        const byHour = {};
+        priceData.forEach(p => {
+            byHour[new Date(p.timestamp).toISOString().slice(0, 13)] = p.price_sek;
+        });
+        energyData.forEach(r => {
+            const hourKey = new Date(r.timestamp).toISOString().slice(0, 13);
+            const price = byHour[hourKey] || 0;
+            totalCost += (r.delta_power || 0) * price;
+        });
+        document.getElementById('totalCost').textContent = totalCost.toFixed(0);
+    }
+}
+
+function renderPowerChart() {
+    const ctx = document.getElementById('powerChart').getContext('2d');
+    if (powerChart) powerChart.destroy();
+
+    // Gruppera per enhet
+    const byDevice = {};
+    energyData.forEach(r => {
+        if (!byDevice[r.device_name]) byDevice[r.device_name] = [];
+        byDevice[r.device_name].push({x: new Date(r.timestamp), y: r.current_value || 0});
+    });
+
+    const datasets = Object.entries(byDevice).map(([name, data], i) => ({
+        label: name,
+        data,
+        borderColor: COLORS[i % COLORS.length],
+        backgroundColor: COLORS[i % COLORS.length] + '20',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+        borderWidth: 2,
+    }));
+
+    powerChart = new Chart(ctx, {
+        type: 'line',
+        data: {datasets},
+        options: chartOptions('W', v => v.toFixed(0) + ' W'),
+    });
+}
+
+function renderPriceChart() {
+    const ctx = document.getElementById('priceChart').getContext('2d');
+    if (priceChart) priceChart.destroy();
+
+    const now = new Date();
+    const data = priceData.map(p => ({
+        x: new Date(p.timestamp),
+        y: p.price_sek * 100,
+        isCurrent: now >= new Date(p.timestamp) &&
+                   now < new Date(new Date(p.timestamp).getTime() + 3600000)
+    }));
+
+    priceChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            datasets: [{
+                label: 'Spotpris (öre/kWh)',
+                data: data.map(d => ({x: d.x, y: d.y})),
+                backgroundColor: data.map(d =>
+                    d.isCurrent ? '#3b82f6' :
+                    d.y < 50 ? '#22c55e40' :
+                    d.y < 100 ? '#f59e0b40' : '#ef444440'
+                ),
+                borderColor: data.map(d =>
+                    d.isCurrent ? '#3b82f6' :
+                    d.y < 50 ? '#22c55e' :
+                    d.y < 100 ? '#f59e0b' : '#ef4444'
+                ),
+                borderWidth: 1,
+                borderRadius: 3,
+            }]
+        },
+        options: chartOptions('öre/kWh', v => v.toFixed(1) + ' öre'),
+    });
+}
+
+function renderDailyChart() {
+    const ctx = document.getElementById('dailyChart').getContext('2d');
+    if (dailyChart) dailyChart.destroy();
+
+    // Summera per enhet och dag
+    const byDeviceDay = {};
+    energyData.forEach(r => {
+        const day = r.timestamp.slice(0, 10);
+        if (!byDeviceDay[r.device_name]) byDeviceDay[r.device_name] = {};
+        if (!byDeviceDay[r.device_name][day]) byDeviceDay[r.device_name][day] = 0;
+        byDeviceDay[r.device_name][day] += r.delta_power || 0;
+    });
+
+    const allDays = [...new Set(energyData.map(r => r.timestamp.slice(0, 10)))].sort();
+
+    const datasets = Object.entries(byDeviceDay).map(([name, days], i) => ({
+        label: name,
+        data: allDays.map(d => parseFloat((days[d] || 0).toFixed(3))),
+        backgroundColor: COLORS[i % COLORS.length] + '80',
+        borderColor: COLORS[i % COLORS.length],
+        borderWidth: 1,
+        borderRadius: 4,
+    }));
+
+    dailyChart = new Chart(ctx, {
+        type: 'bar',
+        data: {labels: allDays, datasets},
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true, grid: {color: '#2a2d3a'}, ticks: {color: '#8b8d97'} },
+                y: { stacked: true, grid: {color: '#2a2d3a'}, ticks: {color: '#8b8d97'},
+                     beginAtZero: true, title: {display: true, text: 'kWh', color: '#8b8d97'} }
+            },
+            plugins: {
+                legend: {labels: {color: '#e4e4e7'}},
+                tooltip: {callbacks: {label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(3)} kWh`}}
+            }
+        }
+    });
+}
+
+function chartOptions(unit, tooltipFn) {
+    return {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {intersect: false, mode: 'index'},
+        scales: {
+            x: { type: 'time', time: {unit: currentDays <= 1 ? 'hour' : 'day',
+                 displayFormats: {hour: 'HH:mm', day: 'dd MMM'}},
+                 grid: {color: '#2a2d3a'}, ticks: {color: '#8b8d97'} },
+            y: { grid: {color: '#2a2d3a'}, ticks: {color: '#8b8d97'}, beginAtZero: true }
+        },
+        plugins: {
+            legend: {labels: {color: '#e4e4e7'}},
+            tooltip: {callbacks: {label: ctx => `${ctx.dataset.label}: ${tooltipFn(ctx.parsed.y)}`}}
+        }
+    };
+}
+
+// Starta
+loadDevices();
+loadEnergyAndPrices();
+setInterval(loadDevices, 60000);
+setInterval(loadEnergyAndPrices, 300000);
+</script>
+</body>
+</html>
