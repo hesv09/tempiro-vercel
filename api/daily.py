@@ -49,11 +49,18 @@ class handler(BaseHTTPRequestHandler):
                 .execute()
             ).data
 
-            # Bygg timme->pris lookup
-            price_by_hour = {}
+            # Bygg timme->pris lookup (medelvärde per timme, pris är i öre/kWh)
+            price_sum_by_hour = {}
+            price_count_by_hour = {}
             for p in price_rows:
                 hour_key = p["timestamp"][:13]  # "2026-02-19T14"
-                price_by_hour[hour_key] = p["price_sek"]
+                ore = p["price_sek"]  # redan i öre/kWh i databasen
+                price_sum_by_hour[hour_key] = price_sum_by_hour.get(hour_key, 0) + ore
+                price_count_by_hour[hour_key] = price_count_by_hour.get(hour_key, 0) + 1
+            price_by_hour = {
+                h: price_sum_by_hour[h] / price_count_by_hour[h]
+                for h in price_sum_by_hour
+            }
 
             # Aggregera per dag och enhet
             # Max rimligt delta per 15 min: 3000W * 0.25h / 1000 = 0.75 kWh
@@ -72,8 +79,9 @@ class handler(BaseHTTPRequestHandler):
                 if kwh > MAX_KWH_PER_READING:
                     continue
 
-                price = price_by_hour.get(hour_key, 0)
-                cost = kwh * price
+                # Pris i öre/kWh -> kostnad i kronor
+                price_ore = price_by_hour.get(hour_key, 0)
+                cost = kwh * price_ore / 100
 
                 if day not in daily:
                     daily[day] = {}
