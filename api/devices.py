@@ -16,16 +16,16 @@ class handler(BaseHTTPRequestHandler):
             result = []
             for d in devices:
                 result.append({
-                    "id": d.get("id"),
-                    "name": d.get("name"),
-                    "deviceId": d.get("deviceId"),
-                    "value": d.get("value", 0),
-                    "currentPower": d.get("currentPower", 0),
-                    "batteryOK": d.get("batteryOK", True),
-                    "fuseVoltageOK": d.get("fuseVoltageOK", True),
-                    "offline": d.get("offline", False),
-                    "lastUpdate": d.get("lastUpdate"),
-                    "hoursActive": d.get("hoursActive", 0),
+                    "id": d.get("Id") or d.get("id"),
+                    "name": d.get("Name") or d.get("name"),
+                    "deviceId": d.get("DeviceId") or d.get("deviceId"),
+                    "value": d.get("Value", d.get("value", 0)),
+                    "currentPower": d.get("CurrentPower", d.get("currentPower", 0)),
+                    "batteryOK": d.get("BatteryOK", d.get("batteryOK", True)),
+                    "fuseVoltageOK": d.get("FuseVoltageOK", d.get("fuseVoltageOK", True)),
+                    "offline": d.get("Offline", d.get("offline", False)),
+                    "lastUpdate": d.get("LastUpdate") or d.get("lastUpdate"),
+                    "hoursActive": d.get("HoursActive", d.get("hoursActive", 0)),
                 })
 
             self.send_response(200)
