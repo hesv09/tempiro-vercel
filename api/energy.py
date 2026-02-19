@@ -1,4 +1,4 @@
-"""GET /api/energy?days=7&device_id=xxx - Hämtar energidata från Supabase."""
+"""GET /api/energy?days=7&device_id=xxx - Hämtar energidata från Supabase med paginering."""
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta, timezone
@@ -7,6 +7,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 from _db import get_public_db
+
+PAGE_SIZE = 1000
 
 
 class handler(BaseHTTPRequestHandler):
@@ -22,23 +24,32 @@ class handler(BaseHTTPRequestHandler):
             from_ts = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
             db = get_public_db()
 
-            query = (
-                db.table("energy_readings")
-                .select("device_id, device_name, timestamp, delta_power, current_value")
-                .gte("timestamp", from_ts)
-                .order("timestamp", desc=False)
-            )
+            # Hämta alla sidor
+            all_data = []
+            offset = 0
+            while True:
+                query = (
+                    db.table("energy_readings")
+                    .select("device_id, device_name, timestamp, delta_power, current_value")
+                    .gte("timestamp", from_ts)
+                    .order("timestamp", desc=False)
+                    .range(offset, offset + PAGE_SIZE - 1)
+                )
+                if device_id:
+                    query = query.eq("device_id", device_id)
 
-            if device_id:
-                query = query.eq("device_id", device_id)
+                result = query.execute()
+                all_data.extend(result.data)
 
-            result = query.execute()
+                if len(result.data) < PAGE_SIZE:
+                    break
+                offset += PAGE_SIZE
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(json.dumps(result.data).encode())
+            self.wfile.write(json.dumps(all_data).encode())
 
         except Exception as e:
             self.send_response(500)
