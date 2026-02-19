@@ -56,6 +56,10 @@ class handler(BaseHTTPRequestHandler):
                 price_by_hour[hour_key] = p["price_sek"]
 
             # Aggregera per dag och enhet
+            # Max rimligt delta per 15 min: 3000W * 0.25h / 1000 = 0.75 kWh
+            # Vi sätter gränsen till 2 kWh för säkerhetsmarginal
+            MAX_KWH_PER_READING = 2.0
+
             daily = {}  # {dag: {enhet: {kwh, cost, readings}}}
             for r in energy_rows:
                 ts = r["timestamp"]
@@ -63,6 +67,11 @@ class handler(BaseHTTPRequestHandler):
                 hour_key = ts[:13]
                 device = r["device_name"]
                 kwh = r["delta_power"] or 0
+
+                # Filtrera bort ackumulerade totaler (orimligt stora värden)
+                if kwh > MAX_KWH_PER_READING:
+                    continue
+
                 price = price_by_hour.get(hour_key, 0)
                 cost = kwh * price
 
