@@ -1,6 +1,7 @@
 """GET /api/prices?days=1 - Hämtar spotpriser från Supabase."""
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+from datetime import datetime, timedelta, timezone
 import json
 import sys
 import os
@@ -17,12 +18,13 @@ class handler(BaseHTTPRequestHandler):
             if days < 1 or days > 90:
                 days = 1
 
+            from_ts = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
             db = get_public_db()
 
             result = (
                 db.table("spot_prices")
                 .select("timestamp, price_sek, price_area")
-                .gte("timestamp", f"now() - interval '{days} days'")
+                .gte("timestamp", from_ts)
                 .order("timestamp", desc=False)
                 .execute()
             )

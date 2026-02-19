@@ -1,6 +1,7 @@
 """GET /api/energy?days=7&device_id=xxx - Hämtar energidata från Supabase."""
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+from datetime import datetime, timedelta, timezone
 import json
 import sys
 import os
@@ -18,12 +19,13 @@ class handler(BaseHTTPRequestHandler):
             if days < 1 or days > 365:
                 days = 7
 
+            from_ts = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
             db = get_public_db()
 
             query = (
                 db.table("energy_readings")
                 .select("device_id, device_name, timestamp, delta_power, current_value")
-                .gte("timestamp", f"now() - interval '{days} days'")
+                .gte("timestamp", from_ts)
                 .order("timestamp", desc=False)
             )
 
