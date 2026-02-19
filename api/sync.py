@@ -21,8 +21,8 @@ def sync_energy(db) -> dict:
     errors = []
 
     for device in devices:
-        device_id = device["id"]
-        device_name = device.get("name", device_id)
+        device_id = device.get("Id") or device.get("id")
+        device_name = device.get("Name") or device.get("name") or device_id
 
         try:
             # Kolla senaste synk för denna enhet
