@@ -325,11 +325,11 @@ async function loadEnergyAndPrices() {
 }
 
 function updateSummaryEnergy() {
-    // Total energi (kWh)
-    const totalKwh = energyData.reduce((sum, r) => sum + (r.delta_power || 0), 0);
+    // Total energi (kWh): current_value (W) × 0.25h / 1000 = kWh per 15-min mätning
+    const totalKwh = energyData.reduce((sum, r) => sum + ((r.current_value || 0) * 0.25 / 1000), 0);
     document.getElementById('totalEnergy').textContent = totalKwh.toFixed(1);
 
-    // Aktuellt elpris
+    // Aktuellt elpris (price_sek är redan i öre/kWh i databasen)
     if (priceData.length > 0) {
         const now = new Date();
         const current = priceData.find(p => {
@@ -339,10 +339,10 @@ function updateSummaryEnergy() {
         });
         if (current) {
             document.getElementById('currentPrice').textContent =
-                (current.price_sek * 100).toFixed(1);
+                current.price_sek.toFixed(1);
         }
 
-        // Beräkna kostnad per timme
+        // Beräkna kostnad: kwh × öre/kWh / 100 = SEK
         let totalCost = 0;
         const byHour = {};
         priceData.forEach(p => {
@@ -350,8 +350,9 @@ function updateSummaryEnergy() {
         });
         energyData.forEach(r => {
             const hourKey = new Date(r.timestamp).toISOString().slice(0, 13);
-            const price = byHour[hourKey] || 0;
-            totalCost += (r.delta_power || 0) * price;
+            const priceOre = byHour[hourKey] || 0;
+            const kwh = (r.current_value || 0) * 0.25 / 1000;
+            totalCost += kwh * priceOre / 100;
         });
         document.getElementById('totalCost').textContent = totalCost.toFixed(0);
     }
@@ -426,13 +427,13 @@ function renderDailyChart() {
     const ctx = document.getElementById('dailyChart').getContext('2d');
     if (dailyChart) dailyChart.destroy();
 
-    // Summera per enhet och dag
+    // Summera per enhet och dag: current_value (W) × 0.25h / 1000 = kWh
     const byDeviceDay = {};
     energyData.forEach(r => {
         const day = r.timestamp.slice(0, 10);
         if (!byDeviceDay[r.device_name]) byDeviceDay[r.device_name] = {};
         if (!byDeviceDay[r.device_name][day]) byDeviceDay[r.device_name][day] = 0;
-        byDeviceDay[r.device_name][day] += r.delta_power || 0;
+        byDeviceDay[r.device_name][day] += (r.current_value || 0) * 0.25 / 1000;
     });
 
     const allDays = [...new Set(energyData.map(r => r.timestamp.slice(0, 10)))].sort();
