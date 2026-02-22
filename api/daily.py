@@ -24,12 +24,13 @@ class handler(BaseHTTPRequestHandler):
             db = get_public_db()
 
             # Hämta energidata med paginering
+            # Använd current_value (Watt) × 0.25h / 1000 = kWh, precis som lokala appen
             energy_rows = []
             offset = 0
             while True:
                 result = (
                     db.table("energy_readings")
-                    .select("device_name, timestamp, delta_power")
+                    .select("device_name, timestamp, current_value")
                     .gte("timestamp", from_ts)
                     .order("timestamp", desc=False)
                     .range(offset, offset + PAGE_SIZE - 1)
@@ -63,21 +64,15 @@ class handler(BaseHTTPRequestHandler):
             }
 
             # Aggregera per dag och enhet
-            # Max rimligt delta per 15 min: 3000W * 0.25h / 1000 = 0.75 kWh
-            # Vi sätter gränsen till 2 kWh för säkerhetsmarginal
-            MAX_KWH_PER_READING = 2.0
-
+            # current_value = Watt, × 0.25h / 1000 = kWh per 15-min mätning
             daily = {}  # {dag: {enhet: {kwh, cost, readings}}}
             for r in energy_rows:
                 ts = r["timestamp"]
                 day = ts[:10]
                 hour_key = ts[:13]
                 device = r["device_name"]
-                kwh = r["delta_power"] or 0
-
-                # Filtrera bort ackumulerade totaler (orimligt stora värden)
-                if kwh > MAX_KWH_PER_READING:
-                    continue
+                watts = r["current_value"] or 0
+                kwh = watts * 0.25 / 1000  # Watt → kWh per 15 min
 
                 # Pris i öre/kWh -> kostnad i kronor
                 price_ore = price_by_hour.get(hour_key, 0)
