@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Månatlig Energiöversikt – Tempiro</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg: #0f1117;
+            --card: #1a1d27;
+            --border: #2a2d3a;
+            --text: #e4e4e7;
+            --muted: #8b8d97;
+            --accent: #3b82f6;
+            --green: #22c55e;
+            --amber: #f59e0b;
+            --red: #ef4444;
+            --purple: #a855f7;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .header h1 { font-size: 1.4rem; font-weight: 600; }
+        .nav-links {
+            display: flex;
+            gap: 16px;
+            font-size: 0.85rem;
+        }
+        .nav-links a {
+            color: var(--muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover { color: var(--accent); }
+        .nav-links a.active { color: var(--accent); }
+
+        /* Sammandragskort */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+        .summary-card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px 20px;
+        }
+        .summary-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+        .summary-value { font-size: 1.8rem; font-weight: 700; }
+        .summary-value.energy { color: var(--accent); }
+        .summary-value.cost { color: var(--amber); }
+        .summary-value.price { color: var(--green); }
+        .summary-sub { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
+
+        /* Tabell */
+        .table-wrap {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        thead th {
+            background: #12141e;
+            padding: 13px 16px;
+            text-align: right;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--muted);
+            font-weight: 500;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        thead th:first-child { text-align: left; }
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+        }
+        tbody tr:last-child { border-bottom: none; }
+        tbody tr:hover { background: rgba(255,255,255,0.03); }
+        tbody tr.current-month { background: rgba(59,130,246,0.06); }
+        tbody tr.current-month:hover { background: rgba(59,130,246,0.10); }
+
+        td {
+            padding: 14px 16px;
+            text-align: right;
+            vertical-align: middle;
+        }
+        td:first-child { text-align: left; }
+
+        .month-cell { display: flex; align-items: center; gap: 10px; }
+        .month-name { font-weight: 600; }
+        .badge {
+            font-size: 0.65rem;
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+        .badge-current { background: rgba(59,130,246,0.2); color: var(--accent); }
+        .badge-partial { background: rgba(245,158,11,0.15); color: var(--amber); }
+
+        .kwh-val { color: var(--accent); font-weight: 600; }
+        .cost-val { color: var(--amber); font-weight: 600; }
+        .price-val { color: var(--green); }
+        .device-kwh { font-size: 0.85rem; color: var(--text); }
+        .device-cost { font-size: 0.75rem; color: var(--muted); }
+
+        .bar-cell { width: 100px; }
+        .bar-bg {
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            min-width: 60px;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: var(--accent);
+        }
+
+        .separator { height: 1px; background: var(--border); }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .error {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--red);
+            font-size: 0.9rem;
+        }
+
+        tfoot td {
+            padding: 14px 16px;
+            text-align: right;
+            background: #12141e;
+            border-top: 2px solid var(--border);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        tfoot td:first-child { text-align: left; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        @media (max-width: 700px) {
+            body { padding: 12px; }
+            .bar-cell { display: none; }
+            td, th { padding: 11px 10px; }
+            .device-cols { display: none; }
+            .summary-value { font-size: 1.4rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📅 Månatlig Energiöversikt</h1>
+        <nav class="nav-links">
+            <a href="/">Dashboard</a>
+            <a href="/analysis.html">Daglig analys</a>
+            <a href="/monthly.html" class="active">Månadsöversikt</a>
+        </nav>
+    </div>
+
+    <!-- Sammandrag -->
+    <div class="summary-grid" id="summaryGrid">
+        <div class="summary-card">
+            <div class="summary-label">Total energi (alla månader)</div>
+            <div class="summary-value energy" id="sumKwh">–</div>
+            <div class="summary-sub">kWh</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Total kostnad</div>
+            <div class="summary-value cost" id="sumCost">–</div>
+            <div class="summary-sub">kr</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Snittpris (vägt)</div>
+            <div class="summary-value price" id="avgPrice">–</div>
+            <div class="summary-sub">öre/kWh</div>
+        </div>
+        <div class="summary-card">
+            <div class="summary-label">Månader med data</div>
+            <div class="summary-value" style="color: var(--purple)" id="monthCount">–</div>
+            <div class="summary-sub">st (sedan jan 2025)</div>
+        </div>
+    </div>
+
+    <!-- Tabell -->
+    <div class="table-wrap">
+        <div class="loading" id="loadingMsg">Hämtar månadsdata…</div>
+        <table id="mainTable" style="display:none">
+            <thead>
+                <tr>
+                    <th>Månad</th>
+                    <th>kWh</th>
+                    <th>Kostnad (kr)</th>
+                    <th>Snittpris (öre/kWh)</th>
+                    <th class="device-cols">VVB1</th>
+                    <th class="device-cols">VVB2</th>
+                    <th class="device-cols">VVB3</th>
+                    <th class="bar-cell">Relativ förbrukning</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+            <tfoot id="tableFoot"></tfoot>
+        </table>
+    </div>
+
+<script>
+const MONTH_NAMES = {
+    "01": "Januari", "02": "Februari", "03": "Mars",
+    "04": "April",   "05": "Maj",      "06": "Juni",
+    "07": "Juli",    "08": "Augusti",  "09": "September",
+    "10": "Oktober", "11": "November", "12": "December"
+};
+
+const DEVICE_ORDER = ["VVB1", "VVB2", "VVB3"];
+
+async function load() {
+    try {
+        const resp = await fetch('/api/monthly');
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+            document.getElementById('loadingMsg').textContent = 'Ingen data tillgänglig.';
+            return;
+        }
+
+        renderSummary(data);
+        renderTable(data);
+
+        document.getElementById('loadingMsg').style.display = 'none';
+        document.getElementById('mainTable').style.display = 'table';
+    } catch (e) {
+        document.getElementById('loadingMsg').innerHTML =
+            `<div class="error">Kunde inte ladda data: ${e.message}</div>`;
+    }
+}
+
+function renderSummary(data) {
+    // Exkludera pågående månad från totaler (delvis data)
+    const complete = data.filter(m => !m.is_current);
+    const all = data;
+
+    const totalKwh = all.reduce((s, m) => s + m.total_kwh, 0);
+    const totalCost = all.reduce((s, m) => s + m.total_cost, 0);
+
+    // Vägat snittpris: kostnad / kWh * 100
+    const avgPrice = totalKwh > 0 ? (totalCost / totalKwh * 100) : null;
+
+    document.getElementById('sumKwh').textContent = totalKwh.toFixed(0);
+    document.getElementById('sumCost').textContent = totalCost.toFixed(0);
+    document.getElementById('avgPrice').textContent = avgPrice !== null ? avgPrice.toFixed(1) : '–';
+    document.getElementById('monthCount').textContent = all.length;
+}
+
+function renderTable(data) {
+    // Hitta max kWh för staplar
+    const maxKwh = Math.max(...data.map(m => m.total_kwh));
+
+    // Samla alla enhetsnamn som förekommer
+    const deviceNames = new Set();
+    data.forEach(m => Object.keys(m.devices).forEach(d => deviceNames.add(d)));
+    const devices = DEVICE_ORDER.filter(d => deviceNames.has(d));
+
+    // Uppdatera kolumnrubriker med faktiska enhetsnamn
+    const headerRow = document.querySelector('thead tr');
+    const deviceHeaders = headerRow.querySelectorAll('.device-cols');
+    devices.forEach((name, i) => {
+        if (deviceHeaders[i]) deviceHeaders[i].textContent = name;
+    });
+    // Dölj oanvända device-kolumner
+    for (let i = devices.length; i < deviceHeaders.length; i++) {
+        deviceHeaders[i].style.display = 'none';
+    }
+
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+
+    data.forEach(m => {
+        const [year, monthNum] = m.month.split('-');
+        const monthName = MONTH_NAMES[monthNum] || monthNum;
+        const barPct = maxKwh > 0 ? (m.total_kwh / maxKwh * 100) : 0;
+
+        const deviceCells = devices.map(name => {
+            const dev = m.devices[name];
+            if (!dev) return `<td class="device-cols"><span style="color: var(--muted)">–</span></td>`;
+            return `<td class="device-cols">
+                <div class="device-kwh">${dev.kwh.toFixed(1)} kWh</div>
+                <div class="device-cost">${dev.cost.toFixed(0)} kr</div>
+            </td>`;
+        }).join('');
+
+        // Dölj extra device-celler
+        const hiddenCells = DEVICE_ORDER.slice(devices.length).map(() =>
+            `<td class="device-cols" style="display:none"></td>`
+        ).join('');
+
+        const priceStr = m.avg_price_ore !== null ? m.avg_price_ore.toFixed(1) : '–';
+
+        const tr = document.createElement('tr');
+        if (m.is_current) tr.className = 'current-month';
+
+        tr.innerHTML = `
+            <td>
+                <div class="month-cell">
+                    <span class="month-name">${monthName} ${year}</span>
+                    ${m.is_current ? '<span class="badge badge-current badge-partial">Pågående</span>' : ''}
+                </div>
+            </td>
+            <td class="kwh-val">${m.total_kwh.toFixed(1)}</td>
+            <td class="cost-val">${m.total_cost.toFixed(0)}</td>
+            <td class="price-val">${priceStr}</td>
+            ${deviceCells}
+            ${hiddenCells}
+            <td class="bar-cell">
+                <div class="bar-bg">
+                    <div class="bar-fill" style="width: ${barPct.toFixed(1)}%"></div>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(tr);
+    });
+
+    // Summering i tfoot (exkl pågående månad)
+    const complete = data.filter(m => !m.is_current);
+    const totKwh = complete.reduce((s, m) => s + m.total_kwh, 0);
+    const totCost = complete.reduce((s, m) => s + m.total_cost, 0);
+    const avgP = totKwh > 0 ? (totCost / totKwh * 100) : 0;
+
+    const devTotals = devices.map(name => {
+        const kwh = complete.reduce((s, m) => s + (m.devices[name]?.kwh || 0), 0);
+        const cost = complete.reduce((s, m) => s + (m.devices[name]?.cost || 0), 0);
+        return `<td class="device-cols">${kwh.toFixed(1)} kWh<br><span style="color:var(--amber)">${cost.toFixed(0)} kr</span></td>`;
+    }).join('');
+
+    const hiddenTotals = DEVICE_ORDER.slice(devices.length).map(() =>
+        `<td class="device-cols" style="display:none"></td>`
+    ).join('');
+
+    document.getElementById('tableFoot').innerHTML = `
+        <tr>
+            <td>Totalt (exkl. pågående)</td>
+            <td style="color: var(--accent)">${totKwh.toFixed(1)}</td>
+            <td style="color: var(--amber)">${totCost.toFixed(0)}</td>
+            <td style="color: var(--green)">${avgP.toFixed(1)}</td>
+            ${devTotals}
+            ${hiddenTotals}
+            <td class="bar-cell"></td>
+        </tr>
+    `;
+}
+
+load();
+</script>
+</body>
+</html>
