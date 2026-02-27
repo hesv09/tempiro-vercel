@@ -83,7 +83,6 @@
             border-collapse: collapse;
             font-size: 0.9rem;
         }
-        .th-short { display: none; }
         thead th {
             background: #12141e;
             padding: 13px 16px;
@@ -181,9 +180,7 @@
             .summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
             .summary-card { padding: 14px; }
             td, th { padding: 10px 8px; }
-            table { font-size: 0.83rem; min-width: 340px; }
-            .th-long { display: none; }
-            .th-short { display: inline; }
+            table { font-size: 0.83rem; min-width: 320px; }
             .month-name { font-size: 0.88rem; }
         }
     </style>
@@ -230,12 +227,12 @@
                 <tr>
                     <th>Månad</th>
                     <th>kWh</th>
-                    <th><span class="th-long">Kostnad (kr)</span><span class="th-short">kr</span></th>
-                    <th><span class="th-long">Snittpris (öre/kWh)</span><span class="th-short">öre/kWh</span></th>
+                    <th>öre/kWh</th>
+                    <th>kr</th>
                     <th class="device-cols">VVB1</th>
                     <th class="device-cols">VVB2</th>
                     <th class="device-cols">VVB3</th>
-                    <th class="bar-cell"><span class="th-long">Relativ förbrukning</span></th>
+                    <th class="bar-cell"></th>
                 </tr>
             </thead>
             <tbody id="tableBody"></tbody>
@@ -245,10 +242,10 @@
 
 <script>
 const MONTH_NAMES = {
-    "01": "Januari", "02": "Februari", "03": "Mars",
-    "04": "April",   "05": "Maj",      "06": "Juni",
-    "07": "Juli",    "08": "Augusti",  "09": "September",
-    "10": "Oktober", "11": "November", "12": "December"
+    "01": "Jan", "02": "Feb", "03": "Mar",
+    "04": "Apr", "05": "Maj", "06": "Jun",
+    "07": "Jul", "08": "Aug", "09": "Sep",
+    "10": "Okt", "11": "Nov", "12": "Dec"
 };
 
 const DEVICE_ORDER = ["VVB1", "VVB2", "VVB3"];
@@ -316,6 +313,8 @@ function renderTable(data) {
     data.forEach(m => {
         const [year, monthNum] = m.month.split('-');
         const monthName = MONTH_NAMES[monthNum] || monthNum;
+        const yr2 = year.slice(2);
+        const displayMonth = `${monthName}-${yr2}`;
 
         const tr = document.createElement('tr');
 
@@ -328,7 +327,7 @@ function renderTable(data) {
             tr.innerHTML = `
                 <td>
                     <div class="month-cell">
-                        <span class="month-name">${monthName} ${year}</span>
+                        <span class="month-name">${displayMonth}</span>
                         <span class="badge badge-nodata">Ingen data</span>
                     </div>
                 </td>
@@ -369,13 +368,13 @@ function renderTable(data) {
         tr.innerHTML = `
             <td>
                 <div class="month-cell">
-                    <span class="month-name">${monthName} ${year}</span>
+                    <span class="month-name">${displayMonth}</span>
                     ${badges}
                 </div>
             </td>
             <td class="kwh-val">${m.total_kwh.toFixed(1)}</td>
-            <td class="cost-val">${m.total_cost.toFixed(0)}</td>
             <td class="price-val">${priceStr}</td>
+            <td class="cost-val">${m.total_cost.toFixed(0)}</td>
             ${deviceCells}
             ${hiddenCells}
             <td class="bar-cell">
@@ -407,8 +406,8 @@ function renderTable(data) {
         <tr>
             <td>Totalt (exkl. pågående)</td>
             <td style="color: var(--accent)">${totKwh.toFixed(1)}</td>
-            <td style="color: var(--amber)">${totCost.toFixed(0)}</td>
             <td style="color: var(--green)">${avgP.toFixed(1)}</td>
+            <td style="color: var(--amber)">${totCost.toFixed(0)}</td>
             ${devTotals}
             ${hiddenTotals}
             <td class="bar-cell"></td>
