@@ -352,10 +352,10 @@ function renderTable(data) {
 
         if (m.is_current) tr.className = 'current-month';
 
-        // Badge: pågående och/eller delvis data
+        // Badge
         let badges = '';
-        if (m.is_current) badges += '<span class="badge badge-current">Pågående</span> ';
-        if (m.partial && !m.is_current) badges += '<span class="badge badge-partial">Delvis data</span>';
+        if (m.is_current) badges += '<span class="badge badge-current">Pågående</span>';
+        else if (m.partial) badges += '<span class="badge badge-partial">Delvis data</span>';
 
         tr.innerHTML = `
             <td>
