@@ -74,13 +74,16 @@
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 14px;
-            overflow: hidden;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
         }
         table {
             width: 100%;
+            min-width: 420px;
             border-collapse: collapse;
             font-size: 0.9rem;
         }
+        .th-short { display: none; }
         thead th {
             background: #12141e;
             padding: 13px 16px;
@@ -171,11 +174,17 @@
         tfoot td:first-child { text-align: left; color: var(--muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; }
 
         @media (max-width: 700px) {
-            body { padding: 12px; }
+            body { padding: 8px; }
             .bar-cell { display: none; }
-            td, th { padding: 11px 10px; }
             .device-cols { display: none; }
             .summary-value { font-size: 1.4rem; }
+            .summary-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+            .summary-card { padding: 14px; }
+            td, th { padding: 10px 8px; }
+            table { font-size: 0.83rem; min-width: 340px; }
+            .th-long { display: none; }
+            .th-short { display: inline; }
+            .month-name { font-size: 0.88rem; }
         }
     </style>
 </head>
@@ -221,12 +230,12 @@
                 <tr>
                     <th>Månad</th>
                     <th>kWh</th>
-                    <th>Kostnad (kr)</th>
-                    <th>Snittpris (öre/kWh)</th>
+                    <th><span class="th-long">Kostnad (kr)</span><span class="th-short">kr</span></th>
+                    <th><span class="th-long">Snittpris (öre/kWh)</span><span class="th-short">öre/kWh</span></th>
                     <th class="device-cols">VVB1</th>
                     <th class="device-cols">VVB2</th>
                     <th class="device-cols">VVB3</th>
-                    <th class="bar-cell">Relativ förbrukning</th>
+                    <th class="bar-cell"><span class="th-long">Relativ förbrukning</span></th>
                 </tr>
             </thead>
             <tbody id="tableBody"></tbody>
