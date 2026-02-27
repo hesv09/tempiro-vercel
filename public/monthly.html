@@ -121,6 +121,9 @@
         }
         .badge-current { background: rgba(59,130,246,0.2); color: var(--accent); }
         .badge-partial { background: rgba(245,158,11,0.15); color: var(--amber); }
+        .badge-nodata { background: rgba(139,141,151,0.15); color: var(--muted); }
+        tr.no-data td { color: var(--muted); }
+        tr.no-data .month-name { color: var(--text); }
 
         .kwh-val { color: var(--accent); font-weight: 600; }
         .cost-val { color: var(--amber); font-weight: 600; }
@@ -264,12 +267,10 @@ async function load() {
 }
 
 function renderSummary(data) {
-    // Exkludera pågående månad från totaler (delvis data)
-    const complete = data.filter(m => !m.is_current);
-    const all = data;
-
-    const totalKwh = all.reduce((s, m) => s + m.total_kwh, 0);
-    const totalCost = all.reduce((s, m) => s + m.total_cost, 0);
+    // Bara månader med faktisk data
+    const withData = data.filter(m => !m.no_data);
+    const totalKwh = withData.reduce((s, m) => s + (m.total_kwh || 0), 0);
+    const totalCost = withData.reduce((s, m) => s + (m.total_cost || 0), 0);
 
     // Vägat snittpris: kostnad / kWh * 100
     const avgPrice = totalKwh > 0 ? (totalCost / totalKwh * 100) : null;
@@ -277,12 +278,12 @@ function renderSummary(data) {
     document.getElementById('sumKwh').textContent = totalKwh.toFixed(0);
     document.getElementById('sumCost').textContent = totalCost.toFixed(0);
     document.getElementById('avgPrice').textContent = avgPrice !== null ? avgPrice.toFixed(1) : '–';
-    document.getElementById('monthCount').textContent = all.length;
+    document.getElementById('monthCount').textContent = withData.length + ' (av ' + data.length + ')';
 }
 
 function renderTable(data) {
-    // Hitta max kWh för staplar
-    const maxKwh = Math.max(...data.map(m => m.total_kwh));
+    // Hitta max kWh för staplar (bara månader med data)
+    const maxKwh = Math.max(...data.filter(m => !m.no_data).map(m => m.total_kwh || 0));
 
     // Samla alla enhetsnamn som förekommer
     const deviceNames = new Set();
@@ -306,6 +307,32 @@ function renderTable(data) {
     data.forEach(m => {
         const [year, monthNum] = m.month.split('-');
         const monthName = MONTH_NAMES[monthNum] || monthNum;
+
+        const tr = document.createElement('tr');
+
+        // Månader utan data
+        if (m.no_data) {
+            tr.className = 'no-data';
+            const hiddenCells = DEVICE_ORDER.map(() =>
+                `<td class="device-cols" style="color: var(--muted)">–</td>`
+            ).join('');
+            tr.innerHTML = `
+                <td>
+                    <div class="month-cell">
+                        <span class="month-name">${monthName} ${year}</span>
+                        <span class="badge badge-nodata">Ingen data</span>
+                    </div>
+                </td>
+                <td style="color: var(--muted)">–</td>
+                <td style="color: var(--muted)">–</td>
+                <td style="color: var(--muted)">–</td>
+                ${hiddenCells}
+                <td class="bar-cell"></td>
+            `;
+            tbody.appendChild(tr);
+            return;
+        }
+
         const barPct = maxKwh > 0 ? (m.total_kwh / maxKwh * 100) : 0;
 
         const deviceCells = devices.map(name => {
@@ -317,21 +344,24 @@ function renderTable(data) {
             </td>`;
         }).join('');
 
-        // Dölj extra device-celler
         const hiddenCells = DEVICE_ORDER.slice(devices.length).map(() =>
             `<td class="device-cols" style="display:none"></td>`
         ).join('');
 
         const priceStr = m.avg_price_ore !== null ? m.avg_price_ore.toFixed(1) : '–';
 
-        const tr = document.createElement('tr');
         if (m.is_current) tr.className = 'current-month';
+
+        // Badge: pågående och/eller delvis data
+        let badges = '';
+        if (m.is_current) badges += '<span class="badge badge-current">Pågående</span> ';
+        if (m.partial && !m.is_current) badges += '<span class="badge badge-partial">Delvis data</span>';
 
         tr.innerHTML = `
             <td>
                 <div class="month-cell">
                     <span class="month-name">${monthName} ${year}</span>
-                    ${m.is_current ? '<span class="badge badge-current badge-partial">Pågående</span>' : ''}
+                    ${badges}
                 </div>
             </td>
             <td class="kwh-val">${m.total_kwh.toFixed(1)}</td>
@@ -348,8 +378,8 @@ function renderTable(data) {
         tbody.appendChild(tr);
     });
 
-    // Summering i tfoot (exkl pågående månad)
-    const complete = data.filter(m => !m.is_current);
+    // Summering i tfoot (exkl pågående + månader utan data)
+    const complete = data.filter(m => !m.is_current && !m.no_data);
     const totKwh = complete.reduce((s, m) => s + m.total_kwh, 0);
     const totCost = complete.reduce((s, m) => s + m.total_cost, 0);
     const avgP = totKwh > 0 ? (totCost / totKwh * 100) : 0;
