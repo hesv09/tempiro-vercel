@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta, timezone
+import calendar
 import json
 import sys
 import os
@@ -9,6 +10,26 @@ sys.path.insert(0, os.path.dirname(__file__))
 from _db import get_public_db
 
 PAGE_SIZE = 1000
+
+
+def _last_sunday(year, month):
+    last_day = calendar.monthrange(year, month)[1]
+    days_back = (datetime(year, month, last_day).weekday() + 1) % 7
+    return last_day - days_back
+
+
+def _se_offset(dt_utc):
+    y = dt_utc.year
+    start = datetime(y, 3, _last_sunday(y, 3), 1, 0, tzinfo=timezone.utc)
+    end   = datetime(y, 10, _last_sunday(y, 10), 1, 0, tzinfo=timezone.utc)
+    return 2 if start <= dt_utc < end else 1
+
+
+def _price_hour_key(ts_str):
+    """Convert UTC price timestamp to Swedish local time hour key (matches energy fake-UTC)."""
+    dt = datetime.fromisoformat(ts_str[:19]).replace(tzinfo=timezone.utc)
+    loc = dt + timedelta(hours=_se_offset(dt))
+    return loc.strftime("%Y-%m-%dT%H")
 
 
 class handler(BaseHTTPRequestHandler):
@@ -54,7 +75,7 @@ class handler(BaseHTTPRequestHandler):
             price_sum_by_hour = {}
             price_count_by_hour = {}
             for p in price_rows:
-                hour_key = p["timestamp"][:13]  # "2026-02-19T14"
+                hour_key = _price_hour_key(p["timestamp"])  # UTC → Swedish local time
                 ore = p["price_sek"]  # redan i öre/kWh i databasen
                 price_sum_by_hour[hour_key] = price_sum_by_hour.get(hour_key, 0) + ore
                 price_count_by_hour[hour_key] = price_count_by_hour.get(hour_key, 0) + 1
