@@ -62,14 +62,22 @@ class handler(BaseHTTPRequestHandler):
                     break
                 offset += PAGE_SIZE
 
-            # Hämta spotpriser
-            price_rows = (
-                db.table("spot_prices")
-                .select("timestamp, price_sek")
-                .gte("timestamp", from_ts)
-                .order("timestamp", desc=False)
-                .execute()
-            ).data
+            # Hämta spotpriser med paginering (15-min intervall = 96/dag, överskrider 1000-gränsen vid 30+ dagar)
+            price_rows = []
+            offset = 0
+            while True:
+                result = (
+                    db.table("spot_prices")
+                    .select("timestamp, price_sek")
+                    .gte("timestamp", from_ts)
+                    .order("timestamp", desc=False)
+                    .range(offset, offset + PAGE_SIZE - 1)
+                    .execute()
+                )
+                price_rows.extend(result.data)
+                if len(result.data) < PAGE_SIZE:
+                    break
+                offset += PAGE_SIZE
 
             # Bygg timme->pris lookup (medelvärde per timme, pris är i öre/kWh)
             price_sum_by_hour = {}
