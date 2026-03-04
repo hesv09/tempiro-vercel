@@ -104,7 +104,7 @@ def sync_prices(db) -> dict:
                 rows.append({
                     "timestamp": p["time_start"],
                     "price_area": PRICE_AREA,
-                    "price_sek": p["SEK_per_kWh"],
+                    "price_sek": p["SEK_per_kWh"] * 100,  # Konvertera till öre/kWh
                     "price_eur": p.get("EUR_per_kWh"),
                 })
 
