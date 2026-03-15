@@ -529,8 +529,13 @@ function renderDailyChart() {
     });
 }
 
-// Grafalternativ för rullande 24h — auto-skalning på X ger naturlig rullande vy
+// Grafalternativ för rullande 24h
+// Energidata lagras i "fake-UTC" (lokal tid sparad som UTC), så vi justerar
+// min/max med webbläsarens timezone-offset för att alltid visa exakt 24h.
 function rollingChartOptions(unit, tooltipFn) {
+    const tzOffsetMs = new Date().getTimezoneOffset() * 60000; // -3600000 i CET
+    const fakeNow = new Date(Date.now() - tzOffsetMs);         // "nu" i fake-UTC
+    const fakeMin = new Date(fakeNow.getTime() - 24 * 3600000); // 24h sedan i fake-UTC
     return {
         responsive: true,
         maintainAspectRatio: false,
@@ -539,6 +544,8 @@ function rollingChartOptions(unit, tooltipFn) {
             x: {
                 type: 'time',
                 time: {unit: 'hour', displayFormats: {hour: 'HH:mm'}},
+                min: fakeMin,
+                max: fakeNow,
                 grid: {color: '#2a2d3a'},
                 ticks: {color: '#8b8d97', maxTicksLimit: 13}
             },
