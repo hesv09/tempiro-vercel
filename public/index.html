@@ -130,13 +130,33 @@
             padding: 20px;
             margin-bottom: 16px;
         }
-        .card h2 { font-size: 0.95rem; font-weight: 500; color: var(--muted); margin-bottom: 16px; }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-header h2 { font-size: 0.95rem; font-weight: 500; color: var(--muted); }
+        .live-badge {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.72rem;
+            color: var(--green);
+        }
+        .live-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
         .chart-container { position: relative; height: 280px; }
 
-        @media (max-width: 600px) {
-            body { padding: 12px; }
-            .summary-value { font-size: 1.5rem; }
-        }
         .landscape-hint {
             display: none;
             text-align: center;
@@ -147,18 +167,16 @@
         @media (max-width: 768px) and (orientation: portrait) {
             .landscape-hint { display: block; }
         }
+        @media (max-width: 600px) {
+            body { padding: 12px; }
+            .summary-value { font-size: 1.5rem; }
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>⚡ Tempiro Energianalys</h1>
         <div class="header-right">
-            <div class="period-btns">
-                <button class="period-btn active" onclick="setPeriod(1, this)">1 dag</button>
-                <button class="period-btn" onclick="setPeriod(7, this)">7 dagar</button>
-                <button class="period-btn" onclick="setPeriod(30, this)">30 dagar</button>
-                <button class="period-btn" onclick="setPeriod(90, this)">90 dagar</button>
-            </div>
             <a href="/analysis.html" style="color: var(--accent); text-decoration: none; font-size: 0.85rem; white-space: nowrap;">Daglig analys →</a>
             <a href="/monthly.html" style="color: var(--accent); text-decoration: none; font-size: 0.85rem; white-space: nowrap;">Månadsöversikt →</a>
             <div class="status">
@@ -172,11 +190,11 @@
     <div class="summary-grid">
         <div class="summary-card">
             <div class="summary-value energy" id="totalEnergy">--</div>
-            <div class="summary-label">Energi (kWh)</div>
+            <div class="summary-label" id="energyLabel">Energi (kWh)</div>
         </div>
         <div class="summary-card">
             <div class="summary-value cost" id="totalCost">--</div>
-            <div class="summary-label">Kostnad (kr)</div>
+            <div class="summary-label" id="costLabel">Kostnad (kr)</div>
         </div>
         <div class="summary-card">
             <div class="summary-value price" id="currentPrice">--</div>
@@ -193,27 +211,46 @@
         <div style="color: var(--muted); padding: 20px;">Laddar enheter...</div>
     </div>
 
-    <!-- Graf: Effekt -->
+    <!-- Graf: Effekt — rullande 24h -->
     <div class="card">
-        <h2>Effekt (W)</h2>
+        <div class="card-header">
+            <h2>Effekt (W)</h2>
+            <div class="live-badge">
+                <div class="live-dot"></div>
+                Rullande 24h
+            </div>
+        </div>
         <div class="chart-container">
             <canvas id="powerChart"></canvas>
         </div>
         <div class="landscape-hint">↺ Vrid telefonen för bättre vy</div>
     </div>
 
-    <!-- Graf: Spotpris -->
+    <!-- Graf: Spotpris — rullande 24h -->
     <div class="card">
-        <h2>Spotpris SE3 (öre/kWh)</h2>
+        <div class="card-header">
+            <h2>Spotpris SE3 (öre/kWh)</h2>
+            <div class="live-badge">
+                <div class="live-dot"></div>
+                Rullande 24h
+            </div>
+        </div>
         <div class="chart-container">
             <canvas id="priceChart"></canvas>
         </div>
         <div class="landscape-hint">↺ Vrid telefonen för bättre vy</div>
     </div>
 
-    <!-- Graf: Daglig energi -->
+    <!-- Graf: Daglig energi — med periodsväljare -->
     <div class="card">
-        <h2>Daglig energiförbrukning (kWh)</h2>
+        <div class="card-header">
+            <h2>Daglig energiförbrukning (kWh)</h2>
+            <div class="period-btns">
+                <button class="period-btn active" onclick="setPeriod(7, this)">7 dagar</button>
+                <button class="period-btn" onclick="setPeriod(30, this)">30 dagar</button>
+                <button class="period-btn" onclick="setPeriod(90, this)">90 dagar</button>
+            </div>
+        </div>
         <div class="chart-container">
             <canvas id="dailyChart"></canvas>
         </div>
@@ -222,17 +259,17 @@
 
 <script>
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b'];
-let currentDays = 1;
+let currentDays = 7;
 let devices = [];
-let energyData = [];
-let priceData = [];
+let rollingEnergy = [], rollingPrices = [];  // alltid 24h
+let periodEnergy = [], periodPrices = [];     // styrs av periodsväljaren
 let powerChart, priceChart, dailyChart;
 
 function setPeriod(days, btn) {
     currentDays = days;
     document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    loadEnergyAndPrices();
+    loadPeriod();
 }
 
 function setStatus(ok, text) {
@@ -319,69 +356,79 @@ function updateSummaryDevices() {
     document.getElementById('activeDevices').textContent = `${active}/${devices.length}`;
 }
 
-// === Energi + Spotpriser från Supabase ===
-async function loadEnergyAndPrices() {
+// === Rullande 24h: effekt + spotpris ===
+async function loadRolling() {
     try {
-        const [energyResp, priceResp] = await Promise.all([
+        const [eResp, pResp] = await Promise.all([
+            fetch('/api/energy?days=1'),
+            fetch('/api/prices?days=1')
+        ]);
+        rollingEnergy = await eResp.json();
+        rollingPrices = await pResp.json();
+        renderPowerChart();
+        renderPriceChart();
+        updateCurrentPrice();
+    } catch(e) {
+        console.error('Kunde inte ladda rullande data:', e);
+    }
+}
+
+// === Perioddata: daglig sammanfattning + stats ===
+async function loadPeriod() {
+    try {
+        const [eResp, pResp] = await Promise.all([
             fetch(`/api/energy?days=${currentDays}`),
             fetch(`/api/prices?days=${currentDays}`)
         ]);
-        energyData = await energyResp.json();
-        priceData = await priceResp.json();
-
-        renderPowerChart();
-        renderPriceChart();
+        periodEnergy = await eResp.json();
+        periodPrices = await pResp.json();
         renderDailyChart();
         updateSummaryEnergy();
     } catch(e) {
-        console.error('Kunde inte ladda energidata:', e);
+        console.error('Kunde inte ladda perioddata:', e);
+    }
+}
+
+function updateCurrentPrice() {
+    if (rollingPrices.length === 0) return;
+    const now = new Date();
+    const current = rollingPrices.find(p => {
+        const t = new Date(p.timestamp);
+        return now >= t && now < new Date(t.getTime() + 3600000);
+    });
+    if (current) {
+        document.getElementById('currentPrice').textContent = current.price_sek.toFixed(1);
     }
 }
 
 function updateSummaryEnergy() {
-    // Total energi (kWh): current_value (W) × 0.25h / 1000 = kWh per 15-min mätning
-    const totalKwh = energyData.reduce((sum, r) => sum + ((r.current_value || 0) * 0.25 / 1000), 0);
+    // Total energi (kWh) för vald period
+    const totalKwh = periodEnergy.reduce((sum, r) => sum + ((r.current_value || 0) * 0.25 / 1000), 0);
     document.getElementById('totalEnergy').textContent = totalKwh.toFixed(1);
+    document.getElementById('energyLabel').textContent = `Energi ${currentDays}d (kWh)`;
 
-    // Aktuellt elpris (price_sek är redan i öre/kWh i databasen)
-    if (priceData.length > 0) {
-        const now = new Date();
-        const current = priceData.find(p => {
-            const t = new Date(p.timestamp);
-            const next = new Date(t.getTime() + 3600000);
-            return now >= t && now < next;
-        });
-        if (current) {
-            document.getElementById('currentPrice').textContent =
-                current.price_sek.toFixed(1);
-        }
-
-        // Beräkna kostnad: kwh × öre/kWh / 100 = SEK
-        let totalCost = 0;
-        // Priser är i UTC, energi är i "fake UTC" (egentligen lokal tid).
-        // Konvertera pristimestamp till svensk lokaltid för korrekt matchning.
-        const byHour = {};
-        priceData.forEach(p => {
-            const loc = new Date(p.timestamp).toLocaleString('sv-SE', {timeZone: 'Europe/Stockholm', hour12: false});
-            byHour[loc.slice(0, 13).replace(' ', 'T')] = p.price_sek;
-        });
-        energyData.forEach(r => {
-            const hourKey = r.timestamp.slice(0, 13);  // face-value = lokal tid
-            const priceOre = byHour[hourKey] || 0;
-            const kwh = (r.current_value || 0) * 0.25 / 1000;
-            totalCost += kwh * priceOre / 100;
-        });
-        document.getElementById('totalCost').textContent = totalCost.toFixed(0);
-    }
+    // Kostnad för vald period
+    const byHour = {};
+    periodPrices.forEach(p => {
+        const loc = new Date(p.timestamp).toLocaleString('sv-SE', {timeZone: 'Europe/Stockholm', hour12: false});
+        byHour[loc.slice(0, 13).replace(' ', 'T')] = p.price_sek;
+    });
+    let totalCost = 0;
+    periodEnergy.forEach(r => {
+        const hourKey = r.timestamp.slice(0, 13);
+        const priceOre = byHour[hourKey] || 0;
+        totalCost += (r.current_value || 0) * 0.25 / 1000 * priceOre / 100;
+    });
+    document.getElementById('totalCost').textContent = totalCost.toFixed(0);
+    document.getElementById('costLabel').textContent = `Kostnad ${currentDays}d (kr)`;
 }
 
 function renderPowerChart() {
     const ctx = document.getElementById('powerChart').getContext('2d');
     if (powerChart) powerChart.destroy();
 
-    // Gruppera per enhet
     const byDevice = {};
-    energyData.forEach(r => {
+    rollingEnergy.forEach(r => {
         if (!byDevice[r.device_name]) byDevice[r.device_name] = [];
         byDevice[r.device_name].push({x: new Date(r.timestamp), y: r.current_value || 0});
     });
@@ -400,7 +447,7 @@ function renderPowerChart() {
     powerChart = new Chart(ctx, {
         type: 'line',
         data: {datasets},
-        options: chartOptions('W', v => v.toFixed(0) + ' W'),
+        options: rollingChartOptions('W', v => v.toFixed(0) + ' W'),
     });
 }
 
@@ -409,9 +456,9 @@ function renderPriceChart() {
     if (priceChart) priceChart.destroy();
 
     const now = new Date();
-    const data = priceData.map(p => ({
+    const data = rollingPrices.map(p => ({
         x: new Date(p.timestamp),
-        y: p.price_sek * 100,
+        y: p.price_sek,
         isCurrent: now >= new Date(p.timestamp) &&
                    now < new Date(new Date(p.timestamp).getTime() + 3600000)
     }));
@@ -436,7 +483,7 @@ function renderPriceChart() {
                 borderRadius: 3,
             }]
         },
-        options: chartOptions('öre/kWh', v => v.toFixed(1) + ' öre'),
+        options: rollingChartOptions('öre/kWh', v => v.toFixed(1) + ' öre'),
     });
 }
 
@@ -444,16 +491,15 @@ function renderDailyChart() {
     const ctx = document.getElementById('dailyChart').getContext('2d');
     if (dailyChart) dailyChart.destroy();
 
-    // Summera per enhet och dag: current_value (W) × 0.25h / 1000 = kWh
     const byDeviceDay = {};
-    energyData.forEach(r => {
+    periodEnergy.forEach(r => {
         const day = r.timestamp.slice(0, 10);
         if (!byDeviceDay[r.device_name]) byDeviceDay[r.device_name] = {};
         if (!byDeviceDay[r.device_name][day]) byDeviceDay[r.device_name][day] = 0;
         byDeviceDay[r.device_name][day] += (r.current_value || 0) * 0.25 / 1000;
     });
 
-    const allDays = [...new Set(energyData.map(r => r.timestamp.slice(0, 10)))].sort();
+    const allDays = [...new Set(periodEnergy.map(r => r.timestamp.slice(0, 10)))].sort();
 
     const datasets = Object.entries(byDeviceDay).map(([name, days], i) => ({
         label: name,
@@ -483,26 +529,19 @@ function renderDailyChart() {
     });
 }
 
-function chartOptions(unit, tooltipFn) {
-    const xScale = {
-        type: 'time',
-        time: {unit: currentDays <= 1 ? 'hour' : 'day',
-               displayFormats: {hour: 'HH:mm', day: 'dd MMM'}},
-        grid: {color: '#2a2d3a'},
-        ticks: {color: '#8b8d97', maxTicksLimit: currentDays <= 1 ? 13 : undefined}
-    };
-    if (currentDays <= 1) {
-        // Lås alltid X-axeln till hela dygnet 00:00–23:59 (UTC = "fake-UTC" för energidata)
-        const todayStr = new Date().toISOString().slice(0, 10);
-        xScale.min = todayStr + 'T00:00:00Z';
-        xScale.max = todayStr + 'T23:59:59Z';
-    }
+// Grafalternativ för rullande 24h — auto-skalning på X ger naturlig rullande vy
+function rollingChartOptions(unit, tooltipFn) {
     return {
         responsive: true,
         maintainAspectRatio: false,
         interaction: {intersect: false, mode: 'index'},
         scales: {
-            x: xScale,
+            x: {
+                type: 'time',
+                time: {unit: 'hour', displayFormats: {hour: 'HH:mm'}},
+                grid: {color: '#2a2d3a'},
+                ticks: {color: '#8b8d97', maxTicksLimit: 13}
+            },
             y: { grid: {color: '#2a2d3a'}, ticks: {color: '#8b8d97'}, beginAtZero: true }
         },
         plugins: {
@@ -514,9 +553,11 @@ function chartOptions(unit, tooltipFn) {
 
 // Starta
 loadDevices();
-loadEnergyAndPrices();
-setInterval(loadDevices, 60000);
-setInterval(loadEnergyAndPrices, 300000);
+loadRolling();
+loadPeriod();
+setInterval(loadDevices, 60000);          // enheter var 1 min
+setInterval(loadRolling, 60000);          // rullande 24h var 1 min
+setInterval(loadPeriod, 300000);          // perioddata var 5 min
 </script>
 </body>
 </html>
