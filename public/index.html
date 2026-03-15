@@ -137,6 +137,16 @@
             body { padding: 12px; }
             .summary-value { font-size: 1.5rem; }
         }
+        .landscape-hint {
+            display: none;
+            text-align: center;
+            padding: 6px 0 2px;
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+        @media (max-width: 768px) and (orientation: portrait) {
+            .landscape-hint { display: block; }
+        }
     </style>
 </head>
 <body>
@@ -189,6 +199,7 @@
         <div class="chart-container">
             <canvas id="powerChart"></canvas>
         </div>
+        <div class="landscape-hint">↺ Vrid telefonen för bättre vy</div>
     </div>
 
     <!-- Graf: Spotpris -->
@@ -197,6 +208,7 @@
         <div class="chart-container">
             <canvas id="priceChart"></canvas>
         </div>
+        <div class="landscape-hint">↺ Vrid telefonen för bättre vy</div>
     </div>
 
     <!-- Graf: Daglig energi -->
@@ -205,6 +217,7 @@
         <div class="chart-container">
             <canvas id="dailyChart"></canvas>
         </div>
+        <div class="landscape-hint">↺ Vrid telefonen för bättre vy</div>
     </div>
 
 <script>
@@ -471,14 +484,25 @@ function renderDailyChart() {
 }
 
 function chartOptions(unit, tooltipFn) {
+    const xScale = {
+        type: 'time',
+        time: {unit: currentDays <= 1 ? 'hour' : 'day',
+               displayFormats: {hour: 'HH:mm', day: 'dd MMM'}},
+        grid: {color: '#2a2d3a'},
+        ticks: {color: '#8b8d97', maxTicksLimit: currentDays <= 1 ? 13 : undefined}
+    };
+    if (currentDays <= 1) {
+        // Lås alltid X-axeln till hela dygnet 00:00–23:59 (UTC = "fake-UTC" för energidata)
+        const todayStr = new Date().toISOString().slice(0, 10);
+        xScale.min = todayStr + 'T00:00:00Z';
+        xScale.max = todayStr + 'T23:59:59Z';
+    }
     return {
         responsive: true,
         maintainAspectRatio: false,
         interaction: {intersect: false, mode: 'index'},
         scales: {
-            x: { type: 'time', time: {unit: currentDays <= 1 ? 'hour' : 'day',
-                 displayFormats: {hour: 'HH:mm', day: 'dd MMM'}},
-                 grid: {color: '#2a2d3a'}, ticks: {color: '#8b8d97'} },
+            x: xScale,
             y: { grid: {color: '#2a2d3a'}, ticks: {color: '#8b8d97'}, beginAtZero: true }
         },
         plugins: {
