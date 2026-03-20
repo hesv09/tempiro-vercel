@@ -103,7 +103,7 @@
     </div>
     <div class="summary-card">
         <div class="summary-value" style="color: var(--green)" id="avgActiveHours">--</div>
-        <div class="summary-label">Snitt aktiva h/dag (totalt)</div>
+        <div class="summary-label">Snitt aktiva h/dag (per säkring)</div>
     </div>
 </div>
 
@@ -188,7 +188,7 @@ function render(data) {
     const totalActiveHoursPerDay = data.map(d =>
         Object.values(d.devices).reduce((s, dev) => s + (dev.active_hours || 0), 0)
     );
-    const avgActiveHours = totalActiveHoursPerDay.reduce((s, h) => s + h, 0) / days;
+    const avgActiveHours = totalActiveHoursPerDay.reduce((s, h) => s + h, 0) / days / (deviceNames.length || 1);
 
     document.getElementById('sumKwh').textContent = totalKwh.toFixed(1);
     document.getElementById('sumCost').textContent = totalCost.toFixed(0);
