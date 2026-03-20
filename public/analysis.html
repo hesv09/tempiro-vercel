@@ -101,6 +101,10 @@
         <div class="summary-value" style="color: var(--muted)" id="avgPrice">--</div>
         <div class="summary-label">Snitt elpris (öre/kWh)</div>
     </div>
+    <div class="summary-card">
+        <div class="summary-value" style="color: var(--green)" id="avgActiveHours">--</div>
+        <div class="summary-label">Snitt aktiva h/dag (totalt)</div>
+    </div>
 </div>
 
 <!-- Statistik per enhet -->
@@ -118,6 +122,12 @@
     <div class="chart-container"><canvas id="costChart"></canvas></div>
 </div>
 
+<!-- Graf: Aktiva timmar per säkring -->
+<div class="card">
+    <h2>Aktiva timmar per säkring (h/dag)</h2>
+    <div class="chart-container"><canvas id="activeHoursChart"></canvas></div>
+</div>
+
 <!-- Tabell: Dag för dag -->
 <div class="card">
     <h2>Dag för dag</h2>
@@ -128,9 +138,12 @@
                 <th class="num">Energi (kWh)</th>
                 <th class="num">Kostnad (kr)</th>
                 <th class="num">Snittspris (öre/kWh)</th>
-                <th class="num">VVB1</th>
-                <th class="num">VVB2</th>
-                <th class="num">VVB3</th>
+                <th class="num">VVB1 (kWh)</th>
+                <th class="num">VVB2 (kWh)</th>
+                <th class="num">VVB3 (kWh)</th>
+                <th class="num">VVB1 (h)</th>
+                <th class="num">VVB2 (h)</th>
+                <th class="num">VVB3 (h)</th>
             </tr>
         </thead>
         <tbody id="tableBody"></tbody>
@@ -140,7 +153,7 @@
 <script>
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b'];
 let currentDays = 30;
-let dailyChart, costChart;
+let dailyChart, costChart, activeHoursChart;
 
 function setPeriod(days, btn) {
     currentDays = days;
@@ -171,17 +184,25 @@ function render(data) {
     const avgCost = totalCost / days;
     const avgPrice = totalKwh > 0 ? (totalCost / totalKwh) * 100 : 0;
 
+    // Snitt aktiva timmar/dag (summa av alla enheters aktiva h per dag, sedan snitt över dagar)
+    const totalActiveHoursPerDay = data.map(d =>
+        Object.values(d.devices).reduce((s, dev) => s + (dev.active_hours || 0), 0)
+    );
+    const avgActiveHours = totalActiveHoursPerDay.reduce((s, h) => s + h, 0) / days;
+
     document.getElementById('sumKwh').textContent = totalKwh.toFixed(1);
     document.getElementById('sumCost').textContent = totalCost.toFixed(0);
     document.getElementById('avgKwhDay').textContent = avgKwh.toFixed(2);
     document.getElementById('avgCostDay').textContent = avgCost.toFixed(0);
     document.getElementById('avgPrice').textContent = avgPrice.toFixed(1);
+    document.getElementById('avgActiveHours').textContent = avgActiveHours.toFixed(1);
 
     // Enhetsstatistik
     const deviceNames = [...new Set(data.flatMap(d => Object.keys(d.devices)))].sort();
     document.getElementById('deviceStats').innerHTML = deviceNames.map((name, i) => {
         const devKwh = data.reduce((s, d) => s + (d.devices[name]?.kwh || 0), 0);
         const devCost = data.reduce((s, d) => s + (d.devices[name]?.cost || 0), 0);
+        const devActiveH = data.reduce((s, d) => s + (d.devices[name]?.active_hours || 0), 0);
         const pct = totalKwh > 0 ? (devKwh / totalKwh * 100).toFixed(0) : 0;
         return `<div class="device-stat">
             <h3 style="color: ${COLORS[i % COLORS.length]}">${name}</h3>
@@ -198,8 +219,16 @@ function render(data) {
                 <span class="device-value">${pct}%</span>
             </div>
             <div class="device-row">
-                <span class="device-label">Snitt/dag</span>
+                <span class="device-label">Snitt kWh/dag</span>
                 <span class="device-value">${(devKwh/days).toFixed(2)} kWh</span>
+            </div>
+            <div class="device-row">
+                <span class="device-label">Aktiva timmar totalt</span>
+                <span class="device-value" style="color: var(--green)">${devActiveH.toFixed(1)} h</span>
+            </div>
+            <div class="device-row">
+                <span class="device-label">Snitt aktiva h/dag</span>
+                <span class="device-value" style="color: var(--green)">${(devActiveH/days).toFixed(1)} h</span>
             </div>
         </div>`;
     }).join('');
@@ -241,6 +270,24 @@ function render(data) {
         options: barOptions('kr', v => v.toFixed(2) + ' kr', true)
     });
 
+    // Aktiva timmar-graf
+    const ctx3 = document.getElementById('activeHoursChart').getContext('2d');
+    if (activeHoursChart) activeHoursChart.destroy();
+    activeHoursChart = new Chart(ctx3, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: deviceNames.map((name, i) => ({
+                label: name,
+                data: data.map(d => d.devices[name]?.active_hours || 0),
+                backgroundColor: COLORS[i % COLORS.length] + '80',
+                borderColor: COLORS[i % COLORS.length],
+                borderWidth: 1, borderRadius: 3,
+            }))
+        },
+        options: barOptions('h', v => v.toFixed(1) + ' h', true)
+    });
+
     // Tabell
     document.getElementById('tableBody').innerHTML = [...data].reverse().map(d => {
         const avgP = d.total_kwh > 0 ? (d.total_cost / d.total_kwh * 100).toFixed(1) : '--';
@@ -251,6 +298,9 @@ function render(data) {
             <td class="num">${avgP}</td>
             ${['VVB1','VVB2','VVB3'].map(n =>
                 `<td class="num">${(d.devices[n]?.kwh || 0).toFixed(2)}</td>`
+            ).join('')}
+            ${['VVB1','VVB2','VVB3'].map(n =>
+                `<td class="num" style="color: var(--green)">${(d.devices[n]?.active_hours || 0).toFixed(1)}</td>`
             ).join('')}
         </tr>`;
     }).join('');

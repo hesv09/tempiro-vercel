@@ -110,11 +110,13 @@ class handler(BaseHTTPRequestHandler):
                 if day not in daily:
                     daily[day] = {}
                 if device not in daily[day]:
-                    daily[day][device] = {"kwh": 0, "cost": 0, "readings": 0}
+                    daily[day][device] = {"kwh": 0, "cost": 0, "readings": 0, "active_intervals": 0}
 
                 daily[day][device]["kwh"] += kwh
                 daily[day][device]["cost"] += cost
                 daily[day][device]["readings"] += 1
+                if watts > 0:
+                    daily[day][device]["active_intervals"] += 1
 
             # Formatera svar
             result_list = []
@@ -130,6 +132,7 @@ class handler(BaseHTTPRequestHandler):
                         name: {
                             "kwh": round(v["kwh"], 3),
                             "cost": round(v["cost"], 2),
+                            "active_hours": round(v["active_intervals"] / 4, 2),
                         }
                         for name, v in devices.items()
                     }
