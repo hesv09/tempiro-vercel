@@ -184,7 +184,10 @@ function render(data) {
     const avgCost = totalCost / days;
     const avgPrice = totalKwh > 0 ? (totalCost / totalKwh) * 100 : 0;
 
-    // Snitt aktiva timmar/dag (summa av alla enheters aktiva h per dag, sedan snitt över dagar)
+    // Enhetsstatistik
+    const deviceNames = [...new Set(data.flatMap(d => Object.keys(d.devices)))].sort();
+
+    // Snitt aktiva timmar/dag per säkring
     const totalActiveHoursPerDay = data.map(d =>
         Object.values(d.devices).reduce((s, dev) => s + (dev.active_hours || 0), 0)
     );
@@ -196,9 +199,6 @@ function render(data) {
     document.getElementById('avgCostDay').textContent = avgCost.toFixed(0);
     document.getElementById('avgPrice').textContent = avgPrice.toFixed(1);
     document.getElementById('avgActiveHours').textContent = avgActiveHours.toFixed(1);
-
-    // Enhetsstatistik
-    const deviceNames = [...new Set(data.flatMap(d => Object.keys(d.devices)))].sort();
     document.getElementById('deviceStats').innerHTML = deviceNames.map((name, i) => {
         const devKwh = data.reduce((s, d) => s + (d.devices[name]?.kwh || 0), 0);
         const devCost = data.reduce((s, d) => s + (d.devices[name]?.cost || 0), 0);
