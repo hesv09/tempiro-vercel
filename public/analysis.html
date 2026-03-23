@@ -30,6 +30,17 @@
         .period-btn:hover { border-color: var(--accent); color: var(--accent); }
         .period-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
 
+        .nav-bar { display: flex; align-items: center; gap: 6px; }
+        .nav-btn { padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px;
+                   background: transparent; color: var(--muted); font-size: 0.85rem;
+                   cursor: pointer; transition: all 0.2s; }
+        .nav-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+        .nav-btn:disabled { opacity: 0.3; cursor: default; }
+        .nav-btn.today { color: var(--green); border-color: var(--green); }
+        .nav-btn.today:hover { background: var(--green); color: #000; }
+        .nav-label { font-size: 0.8rem; color: var(--text); min-width: 140px;
+                     text-align: center; font-variant-numeric: tabular-nums; }
+
         .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
                         gap: 16px; margin-bottom: 24px; }
         .summary-card { background: var(--card); border: 1px solid var(--border);
@@ -69,10 +80,18 @@
 <div class="header">
     <h1>⚡ Tempiro - Analys</h1>
     <div class="header-right">
-        <div class="period-btns">
-            <button class="period-btn" onclick="setPeriod(7, this)">7 dagar</button>
-            <button class="period-btn active" onclick="setPeriod(30, this)">30 dagar</button>
-            <button class="period-btn" onclick="setPeriod(90, this)">90 dagar</button>
+        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:8px;">
+            <div class="period-btns">
+                <button class="period-btn" onclick="setPeriod(7, this)">7 dagar</button>
+                <button class="period-btn active" onclick="setPeriod(30, this)">30 dagar</button>
+                <button class="period-btn" onclick="setPeriod(90, this)">90 dagar</button>
+            </div>
+            <div class="nav-bar">
+                <button class="nav-btn" onclick="goBack()">← Bakåt</button>
+                <span class="nav-label" id="dateRangeLabel">--</span>
+                <button class="nav-btn" onclick="goForward()" id="btnForward" disabled>Framåt →</button>
+                <button class="nav-btn today" onclick="goToday()" id="btnToday" style="display:none">Idag</button>
+            </div>
         </div>
         <a class="back" href="/">← Dashboard</a>
         <a class="back" href="/monthly.html" style="margin-left: 8px;">Månadsöversikt →</a>
@@ -153,18 +172,60 @@
 <script>
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b'];
 let currentDays = 30;
+let offset = 0;   // 0 = nuvarande period, 1 = föregående period, osv.
 let dailyChart, costChart, activeHoursChart;
+
+// --- Datumhantering ---
+function localDateStr(d) {
+    // YYYY-MM-DD i lokal tid (undviker UTC-dagsskifte-problem)
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
+function getDateRange() {
+    const today = new Date();
+    // "to" = idag minus offset * period
+    const to = new Date(today);
+    to.setDate(today.getDate() - offset * currentDays);
+    // "from" = to minus (period-1) dagar
+    const from = new Date(to);
+    from.setDate(to.getDate() - (currentDays - 1));
+    return { from: localDateStr(from), to: localDateStr(to) };
+}
+
+function fmtDate(s) {
+    // "2026-03-14" → "14 mar"
+    const [, m, d] = s.split('-');
+    const months = ['jan','feb','mar','apr','maj','jun','jul','aug','sep','okt','nov','dec'];
+    return `${parseInt(d)} ${months[parseInt(m)-1]}`;
+}
+
+function updateNav() {
+    const {from, to} = getDateRange();
+    document.getElementById('dateRangeLabel').textContent = `${fmtDate(from)} – ${fmtDate(to)}`;
+    document.getElementById('btnForward').disabled = offset === 0;
+    document.getElementById('btnToday').style.display = offset === 0 ? 'none' : 'inline-block';
+}
+
+function goBack()    { offset++;            updateNav(); loadData(); }
+function goForward() { if (offset > 0) { offset--; updateNav(); loadData(); } }
+function goToday()   { offset = 0;          updateNav(); loadData(); }
 
 function setPeriod(days, btn) {
     currentDays = days;
+    offset = 0;
     document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+    updateNav();
     loadData();
 }
 
 async function loadData() {
     try {
-        const resp = await fetch(`/api/daily?days=${currentDays}`);
+        const {from, to} = getDateRange();
+        const resp = await fetch(`/api/daily?from_date=${from}&to_date=${to}`);
         const data = await resp.json();
         if (!Array.isArray(data)) throw new Error(data.error || 'Fel');
         render(data);
@@ -320,6 +381,7 @@ function barOptions(unit, tooltipFn, stacked) {
     };
 }
 
+updateNav();
 loadData();
 </script>
 </body>

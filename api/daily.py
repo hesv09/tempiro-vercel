@@ -36,12 +36,27 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             params = parse_qs(urlparse(self.path).query)
-            days = int(params.get("days", ["30"])[0])
 
-            if days < 1 or days > 365:
-                days = 30
+            # Stöd både ?days=N (rullande) och ?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD (kalender)
+            from_date = params.get("from_date", [None])[0]
+            to_date   = params.get("to_date",   [None])[0]
 
-            from_ts = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+            if from_date and to_date:
+                # Energidata lagras i fake-UTC (lokal tid som UTC) → filtrera direkt
+                from_ts  = from_date + "T00:00:00"
+                to_ts    = to_date   + "T23:59:59"
+                # Spotpriser i riktig UTC → utöka med 2h åt varje håll för CET/CEST
+                price_from_ts = (datetime.fromisoformat(from_ts) - timedelta(hours=2)).isoformat()
+                price_to_ts   = (datetime.fromisoformat(to_ts)   + timedelta(hours=2)).isoformat()
+            else:
+                days = int(params.get("days", ["30"])[0])
+                if days < 1 or days > 365:
+                    days = 30
+                from_ts       = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+                to_ts         = None
+                price_from_ts = from_ts
+                price_to_ts   = None
+
             db = get_public_db()
 
             # Hämta energidata med paginering
@@ -49,14 +64,12 @@ class handler(BaseHTTPRequestHandler):
             energy_rows = []
             offset = 0
             while True:
-                result = (
-                    db.table("energy_readings")
-                    .select("device_name, timestamp, current_value")
-                    .gte("timestamp", from_ts)
-                    .order("timestamp", desc=False)
-                    .range(offset, offset + PAGE_SIZE - 1)
-                    .execute()
-                )
+                q = (db.table("energy_readings")
+                     .select("device_name, timestamp, current_value")
+                     .gte("timestamp", from_ts))
+                if to_ts:
+                    q = q.lte("timestamp", to_ts)
+                result = q.order("timestamp", desc=False).range(offset, offset + PAGE_SIZE - 1).execute()
                 energy_rows.extend(result.data)
                 if len(result.data) < PAGE_SIZE:
                     break
@@ -66,14 +79,12 @@ class handler(BaseHTTPRequestHandler):
             price_rows = []
             offset = 0
             while True:
-                result = (
-                    db.table("spot_prices")
-                    .select("timestamp, price_sek")
-                    .gte("timestamp", from_ts)
-                    .order("timestamp", desc=False)
-                    .range(offset, offset + PAGE_SIZE - 1)
-                    .execute()
-                )
+                q = (db.table("spot_prices")
+                     .select("timestamp, price_sek")
+                     .gte("timestamp", price_from_ts))
+                if price_to_ts:
+                    q = q.lte("timestamp", price_to_ts)
+                result = q.order("timestamp", desc=False).range(offset, offset + PAGE_SIZE - 1).execute()
                 price_rows.extend(result.data)
                 if len(result.data) < PAGE_SIZE:
                     break
