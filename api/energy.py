@@ -21,7 +21,10 @@ class handler(BaseHTTPRequestHandler):
             if days < 1 or days > 365:
                 days = 7
 
-            from_ts = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+            # Lägg till 3h buffert: energidata lagras som lokal tid (fake-UTC) i Supabase,
+            # vilket gör att den faktiska 24h-gränsen är ~2h förskjuten. Bufferten säkerställer
+            # att alla mätningar inom det rullande fönstret inkluderas.
+            from_ts = (datetime.now(timezone.utc) - timedelta(days=days) - timedelta(hours=3)).isoformat()
             db = get_public_db()
 
             # Hämta alla sidor
