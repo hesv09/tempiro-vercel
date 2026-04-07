@@ -1,14 +1,17 @@
 """GET /api/sync - Synkar data från Tempiro API och spotpriser till Supabase.
-Körs automatiskt en gång per dag via Vercel Cron Job."""
+Körs automatiskt varje timme via Vercel Cron Job (kräver Pro-plan)."""
 from http.server import BaseHTTPRequestHandler
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 import requests
 import sys
 import os
+import zoneinfo
 sys.path.insert(0, os.path.dirname(__file__))
 from _db import get_db
 from _tempiro import get_devices, get_device_values
+
+TZ_STOCKHOLM = zoneinfo.ZoneInfo("Europe/Stockholm")
 
 
 PRICE_AREA = "SE3"
@@ -34,15 +37,18 @@ def sync_energy(db) -> dict:
                 .execute()
             )
 
+            # Använd lokal Stockholm-tid för Tempiro-API:t (tolkar timestamps som lokal tid)
+            now_local = datetime.now(TZ_STOCKHOLM)
+
             if status.data:
-                # Hämta från senaste synk (minus 1h för överlapp)
-                last = datetime.fromisoformat(status.data[0]["last_sync"].replace("Z", "+00:00"))
-                from_dt = (last - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S")
+                # Hämta från senaste synk (minus 1h för överlapp), konvertera till lokal tid
+                last_utc = datetime.fromisoformat(status.data[0]["last_sync"].replace("Z", "+00:00"))
+                from_dt = (last_utc - timedelta(hours=1)).astimezone(TZ_STOCKHOLM).strftime("%Y-%m-%dT%H:%M:%S")
             else:
                 # Första synk - hämta 7 dagar bakåt
-                from_dt = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
+                from_dt = (now_local - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
 
-            to_dt = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+            to_dt = now_local.strftime("%Y-%m-%dT%H:%M:%S")
 
             values = get_device_values(device_id, from_dt, to_dt)
 
