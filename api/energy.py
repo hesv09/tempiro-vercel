@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import json
 import sys
 import os
@@ -9,6 +10,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from _db import get_public_db
 
 PAGE_SIZE = 1000
+_STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
 
 class handler(BaseHTTPRequestHandler):
@@ -21,7 +23,10 @@ class handler(BaseHTTPRequestHandler):
             if days < 1 or days > 365:
                 days = 7
 
-            from_ts = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+            # Energidata lagras som "fake-UTC" (lokal Stockholmstid utan tidszon).
+            # Använd lokal tid för from_ts så att fönstret stämmer med lagrad data.
+            now_local = datetime.now(_STOCKHOLM).replace(tzinfo=None)
+            from_ts = (now_local - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
             db = get_public_db()
 
             # Hämta alla sidor
