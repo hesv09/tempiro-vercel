@@ -122,12 +122,9 @@
     </div>
     <div class="summary-card">
         <div class="summary-value" style="color: var(--green)" id="avgActiveHours">--</div>
-        <div class="summary-label">Snitt aktiva h/dag (per säkring)</div>
+        <div class="summary-label">Snitt aktiva h/dag</div>
     </div>
 </div>
-
-<!-- Statistik per enhet -->
-<div class="device-grid" id="deviceStats"></div>
 
 <!-- Graf: Daglig energi -->
 <div class="card">
@@ -141,9 +138,9 @@
     <div class="chart-container"><canvas id="costChart"></canvas></div>
 </div>
 
-<!-- Graf: Aktiva timmar per säkring -->
+<!-- Graf: Aktiva timmar (snitt säkringar) -->
 <div class="card">
-    <h2>Aktiva timmar per säkring (h/dag)</h2>
+    <h2>Aktiva timmar/dag <span style="font-size:0.8em;color:var(--muted)">— snitt över säkringarna · <span style="color:var(--green)">grön</span> = i balans (±10%) · <span style="color:var(--red)">röd</span> = obalans</span></h2>
     <div class="chart-container"><canvas id="activeHoursChart"></canvas></div>
 </div>
 
@@ -157,9 +154,7 @@
                 <th class="num">Energi (kWh)</th>
                 <th class="num">Kostnad (kr)</th>
                 <th class="num">Snittspris (öre/kWh)</th>
-                <th class="num">VVB1 (kWh)</th>
-                <th class="num">VVB2 (kWh)</th>
-                <th class="num">VVB3 (kWh)</th>
+                <th class="num">Aktiva timmar</th>
                 <th class="num">VVB1 (h)</th>
                 <th class="num">VVB2 (h)</th>
                 <th class="num">VVB3 (h)</th>
@@ -234,134 +229,120 @@ async function loadData() {
     }
 }
 
+// Beräkna snitt aktiva timmar och om säkringarna är i balans (±10%)
+function activeHoursStats(dayRow) {
+    const hours = Object.values(dayRow.devices).map(d => d.active_hours || 0);
+    if (hours.length === 0) return { avg: 0, balanced: true };
+    const avg = hours.reduce((s, h) => s + h, 0) / hours.length;
+    const balanced = hours.every(h => avg === 0 || Math.abs(h - avg) / avg <= 0.10);
+    return { avg, balanced };
+}
+
 function render(data) {
     if (!data.length) return;
 
-    // Summering
-    const totalKwh = data.reduce((s, d) => s + d.total_kwh, 0);
+    const totalKwh  = data.reduce((s, d) => s + d.total_kwh, 0);
     const totalCost = data.reduce((s, d) => s + d.total_cost, 0);
-    const days = data.length;
-    const avgKwh = totalKwh / days;
-    const avgCost = totalCost / days;
-    const avgPrice = totalKwh > 0 ? (totalCost / totalKwh) * 100 : 0;
+    const days      = data.length;
+    const avgKwh    = totalKwh / days;
+    const avgCost   = totalCost / days;
+    const avgPrice  = totalKwh > 0 ? (totalCost / totalKwh) * 100 : 0;
 
-    // Enhetsstatistik
     const deviceNames = [...new Set(data.flatMap(d => Object.keys(d.devices)))].sort();
 
-    // Snitt aktiva timmar/dag per säkring
-    const totalActiveHoursPerDay = data.map(d =>
-        Object.values(d.devices).reduce((s, dev) => s + (dev.active_hours || 0), 0)
-    );
-    const avgActiveHours = totalActiveHoursPerDay.reduce((s, h) => s + h, 0) / days / (deviceNames.length || 1);
+    const avgActiveHours = data.reduce((s, d) => s + activeHoursStats(d).avg, 0) / days;
 
-    document.getElementById('sumKwh').textContent = totalKwh.toFixed(1);
-    document.getElementById('sumCost').textContent = totalCost.toFixed(0);
-    document.getElementById('avgKwhDay').textContent = avgKwh.toFixed(2);
-    document.getElementById('avgCostDay').textContent = avgCost.toFixed(0);
-    document.getElementById('avgPrice').textContent = avgPrice.toFixed(1);
+    document.getElementById('sumKwh').textContent        = totalKwh.toFixed(1);
+    document.getElementById('sumCost').textContent       = totalCost.toFixed(0);
+    document.getElementById('avgKwhDay').textContent     = avgKwh.toFixed(2);
+    document.getElementById('avgCostDay').textContent    = avgCost.toFixed(0);
+    document.getElementById('avgPrice').textContent      = avgPrice.toFixed(1);
     document.getElementById('avgActiveHours').textContent = avgActiveHours.toFixed(1);
-    document.getElementById('deviceStats').innerHTML = deviceNames.map((name, i) => {
-        const devKwh = data.reduce((s, d) => s + (d.devices[name]?.kwh || 0), 0);
-        const devCost = data.reduce((s, d) => s + (d.devices[name]?.cost || 0), 0);
-        const devActiveH = data.reduce((s, d) => s + (d.devices[name]?.active_hours || 0), 0);
-        const pct = totalKwh > 0 ? (devKwh / totalKwh * 100).toFixed(0) : 0;
-        return `<div class="device-stat">
-            <h3 style="color: ${COLORS[i % COLORS.length]}">${name}</h3>
-            <div class="device-row">
-                <span class="device-label">Total energi</span>
-                <span class="device-value" style="color: var(--accent)">${devKwh.toFixed(1)} kWh</span>
-            </div>
-            <div class="device-row">
-                <span class="device-label">Total kostnad</span>
-                <span class="device-value" style="color: var(--amber)">${devCost.toFixed(0)} kr</span>
-            </div>
-            <div class="device-row">
-                <span class="device-label">Andel av total</span>
-                <span class="device-value">${pct}%</span>
-            </div>
-            <div class="device-row">
-                <span class="device-label">Snitt kWh/dag</span>
-                <span class="device-value">${(devKwh/days).toFixed(2)} kWh</span>
-            </div>
-            <div class="device-row">
-                <span class="device-label">Aktiva timmar totalt</span>
-                <span class="device-value" style="color: var(--green)">${devActiveH.toFixed(1)} h</span>
-            </div>
-            <div class="device-row">
-                <span class="device-label">Snitt aktiva h/dag</span>
-                <span class="device-value" style="color: var(--green)">${(devActiveH/days).toFixed(1)} h</span>
-            </div>
-        </div>`;
-    }).join('');
 
-    // Daglig energigraf
     const labels = data.map(d => d.day);
+
+    // Daglig energigraf — total per dag (en stapel)
     const ctx1 = document.getElementById('dailyChart').getContext('2d');
     if (dailyChart) dailyChart.destroy();
     dailyChart = new Chart(ctx1, {
         type: 'bar',
         data: {
             labels,
-            datasets: deviceNames.map((name, i) => ({
-                label: name,
-                data: data.map(d => d.devices[name]?.kwh || 0),
-                backgroundColor: COLORS[i % COLORS.length] + '80',
-                borderColor: COLORS[i % COLORS.length],
+            datasets: [{
+                label: 'Energi (kWh)',
+                data: data.map(d => d.total_kwh),
+                backgroundColor: '#3b82f680',
+                borderColor: '#3b82f6',
                 borderWidth: 1, borderRadius: 3,
-            }))
+            }]
         },
-        options: barOptions('kWh', v => v.toFixed(2) + ' kWh', true)
+        options: barOptions('kWh', v => v.toFixed(2) + ' kWh', false)
     });
 
-    // Kostnadsgraf
+    // Kostnadsgraf — total per dag (en stapel)
     const ctx2 = document.getElementById('costChart').getContext('2d');
     if (costChart) costChart.destroy();
     costChart = new Chart(ctx2, {
         type: 'bar',
         data: {
             labels,
-            datasets: deviceNames.map((name, i) => ({
-                label: name,
-                data: data.map(d => d.devices[name]?.cost || 0),
-                backgroundColor: COLORS[i % COLORS.length] + '80',
-                borderColor: COLORS[i % COLORS.length],
+            datasets: [{
+                label: 'Kostnad (kr)',
+                data: data.map(d => d.total_cost),
+                backgroundColor: '#f59e0b80',
+                borderColor: '#f59e0b',
                 borderWidth: 1, borderRadius: 3,
-            }))
+            }]
         },
-        options: barOptions('kr', v => v.toFixed(2) + ' kr', true)
+        options: barOptions('kr', v => v.toFixed(0) + ' kr', false)
     });
 
-    // Aktiva timmar-graf
+    // Aktiva timmar — snitt säkringar, grön = balans ±10%, röd = obalans
+    const ahStats = data.map(d => activeHoursStats(d));
     const ctx3 = document.getElementById('activeHoursChart').getContext('2d');
     if (activeHoursChart) activeHoursChart.destroy();
     activeHoursChart = new Chart(ctx3, {
         type: 'bar',
         data: {
             labels,
-            datasets: deviceNames.map((name, i) => ({
-                label: name,
-                data: data.map(d => d.devices[name]?.active_hours || 0),
-                backgroundColor: COLORS[i % COLORS.length] + '80',
-                borderColor: COLORS[i % COLORS.length],
+            datasets: [{
+                label: 'Snitt aktiva timmar',
+                data: ahStats.map(s => s.avg),
+                backgroundColor: ahStats.map(s => s.balanced ? '#22c55e80' : '#ef444480'),
+                borderColor:     ahStats.map(s => s.balanced ? '#22c55e'   : '#ef4444'),
                 borderWidth: 1, borderRadius: 3,
-            }))
+            }]
         },
-        options: barOptions('h', v => v.toFixed(1) + ' h', true)
+        options: {
+            ...barOptions('h', v => v.toFixed(1) + ' h', false),
+            plugins: {
+                legend: { labels: { color: '#e4e4e7' } },
+                tooltip: { callbacks: {
+                    label: ctx => {
+                        const d = data[ctx.dataIndex];
+                        const perDev = deviceNames.map(n =>
+                            `${n}: ${(d.devices[n]?.active_hours || 0).toFixed(1)} h`
+                        ).join(' · ');
+                        return [`Snitt: ${ctx.parsed.y.toFixed(1)} h`, perDev];
+                    }
+                }}
+            }
+        }
     });
 
     // Tabell
     document.getElementById('tableBody').innerHTML = [...data].reverse().map(d => {
         const avgP = d.total_kwh > 0 ? (d.total_cost / d.total_kwh * 100).toFixed(1) : '--';
+        const { avg: avgH, balanced } = activeHoursStats(d);
+        const hColor = balanced ? 'var(--green)' : 'var(--red)';
         return `<tr>
             <td>${d.day}</td>
             <td class="num kwh-cell">${d.total_kwh.toFixed(2)}</td>
             <td class="num cost-cell">${d.total_cost.toFixed(0)}</td>
             <td class="num">${avgP}</td>
-            ${['VVB1','VVB2','VVB3'].map(n =>
-                `<td class="num">${(d.devices[n]?.kwh || 0).toFixed(2)}</td>`
-            ).join('')}
-            ${['VVB1','VVB2','VVB3'].map(n =>
-                `<td class="num" style="color: var(--green)">${(d.devices[n]?.active_hours || 0).toFixed(1)}</td>`
+            <td class="num" style="color:${hColor};font-weight:600">${avgH.toFixed(1)}</td>
+            ${deviceNames.map(n =>
+                `<td class="num" style="color:var(--muted)">${(d.devices[n]?.active_hours || 0).toFixed(1)}</td>`
             ).join('')}
         </tr>`;
     }).join('');
