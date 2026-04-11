@@ -52,7 +52,8 @@ class handler(BaseHTTPRequestHandler):
                 days = int(params.get("days", ["30"])[0])
                 if days < 1 or days > 365:
                     days = 30
-                from_ts       = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+                now_utc       = datetime.now(timezone.utc)
+                from_ts       = (now_utc + timedelta(hours=_se_offset(now_utc)) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
                 to_ts         = None
                 price_from_ts = from_ts
                 price_to_ts   = None
@@ -65,7 +66,7 @@ class handler(BaseHTTPRequestHandler):
             offset = 0
             while True:
                 q = (db.table("energy_readings")
-                     .select("device_name, timestamp, current_value")
+                     .select("device_name, timestamp, current_value, delta_power")
                      .gte("timestamp", from_ts))
                 if to_ts:
                     q = q.lte("timestamp", to_ts)
@@ -112,6 +113,7 @@ class handler(BaseHTTPRequestHandler):
                 hour_key = ts[:13]
                 device = r["device_name"]
                 watts = r["current_value"] or 0
+                delta_power = r.get("delta_power") or 0
                 kwh = watts * 0.25 / 1000  # Watt → kWh per 15 min
 
                 # Pris i öre/kWh -> kostnad i kronor
@@ -126,7 +128,7 @@ class handler(BaseHTTPRequestHandler):
                 daily[day][device]["kwh"] += kwh
                 daily[day][device]["cost"] += cost
                 daily[day][device]["readings"] += 1
-                if watts > 0:
+                if watts > 0 or delta_power > 0:
                     daily[day][device]["active_intervals"] += 1
 
             # Formatera svar
