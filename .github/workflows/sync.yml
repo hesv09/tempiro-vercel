@@ -1,0 +1,15 @@
+name: Sync Tempiro data
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sync
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            "https://tempiro-vercel.vercel.app/api/sync"
