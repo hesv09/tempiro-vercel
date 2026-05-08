@@ -123,6 +123,28 @@
         .switch-btn.off:hover { background: rgba(34,197,94,0.2); }
         .switch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+        .alert-banner {
+            display: none;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 16px;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        .alert-banner.warning {
+            display: block;
+            background: rgba(245,158,11,0.12);
+            border-color: rgba(245,158,11,0.4);
+            color: #fbbf24;
+        }
+        .alert-banner.critical {
+            display: block;
+            background: rgba(239,68,68,0.12);
+            border-color: rgba(239,68,68,0.4);
+            color: #fca5a5;
+        }
+
         .card {
             background: var(--card);
             border: 1px solid var(--border);
@@ -185,6 +207,8 @@
             </div>
         </div>
     </div>
+
+    <div id="alertBanner" class="alert-banner"></div>
 
     <!-- Summering -->
     <div class="summary-grid">
@@ -264,6 +288,7 @@ let devices = [];
 let rollingEnergy = [], rollingPrices = [];  // alltid 24h
 let periodEnergy = [], periodPrices = [];     // styrs av periodsväljaren
 let powerChart, priceChart, dailyChart;
+let switchPin = sessionStorage.getItem('tempiro_switch_pin') || '';
 
 function setPeriod(days, btn) {
     currentDays = days;
@@ -336,16 +361,25 @@ function renderDevices() {
 
 async function toggleDevice(deviceId, value) {
     const btn = document.getElementById(`btn-${deviceId}`);
+    if (!switchPin) {
+        switchPin = window.prompt('PIN för att styra varmvattenberedaren') || '';
+        if (!switchPin) return;
+        sessionStorage.setItem('tempiro_switch_pin', switchPin);
+    }
     btn.disabled = true;
     btn.textContent = 'Väntar...';
     try {
         const resp = await fetch('/api/switch', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({device_id: deviceId, value})
+            body: JSON.stringify({device_id: deviceId, value, pin: switchPin})
         });
         if (!resp.ok) {
             const err = await resp.json().catch(() => ({}));
+            if (resp.status === 401) {
+                sessionStorage.removeItem('tempiro_switch_pin');
+                switchPin = '';
+            }
             btn.textContent = `Fel ${resp.status}`;
             btn.style.background = '#c0392b';
             console.error('Switch error:', err);
@@ -359,6 +393,31 @@ async function toggleDevice(deviceId, value) {
         console.error('Network error:', e);
         setTimeout(loadDevices, 3000);
     }
+}
+
+async function loadAlerts() {
+    try {
+        const resp = await fetch('/api/alerts');
+        if (!resp.ok) throw new Error(resp.statusText);
+        const data = await resp.json();
+        renderAlert(data.heater);
+    } catch(e) {
+        console.warn('Kunde inte ladda larmstatus:', e);
+    }
+}
+
+function renderAlert(heater) {
+    const banner = document.getElementById('alertBanner');
+    if (!heater || heater.ok) {
+        banner.className = 'alert-banner';
+        banner.textContent = '';
+        return;
+    }
+    const names = (heater.off_devices || []).map(d => d.name).join(', ');
+    banner.className = `alert-banner ${heater.severity}`;
+    banner.textContent = names
+        ? `${heater.message} Avstängda säkringar: ${names}.`
+        : heater.message;
 }
 
 function updateSummaryDevices() {
@@ -568,30 +627,15 @@ function rollingChartOptions(unit, tooltipFn) {
     };
 }
 
-// Trigga synk om data är äldre än 30 min (fallback för Hobby-plan med daglig cron)
-async function triggerSyncIfStale() {
-    const key = 'tempiro_last_sync';
-    const last = localStorage.getItem(key);
-    if (!last || Date.now() - parseInt(last) > 30 * 60 * 1000) {
-        try {
-            await fetch('/api/sync');
-            localStorage.setItem(key, String(Date.now()));
-        } catch(e) {
-            console.warn('Sync misslyckades:', e);
-        }
-    }
-}
-
 // Starta
-triggerSyncIfStale().then(() => {
-    loadDevices();
-    loadRolling();
-    loadPeriod();
-});
+loadDevices();
+loadRolling();
+loadPeriod();
+loadAlerts();
 setInterval(loadDevices, 60000);          // enheter var 1 min
 setInterval(loadRolling, 60000);          // rullande 24h var 1 min
 setInterval(loadPeriod, 300000);          // perioddata var 5 min
-setInterval(triggerSyncIfStale, 30 * 60 * 1000); // synk var 30 min
+setInterval(loadAlerts, 60000);           // larmstatus var 1 min
 </script>
 <p style="text-align:center;font-size:0.7rem;color:var(--muted);margin-top:24px;padding-bottom:8px;font-style:italic;">
     * Priser avser råa spotpriser exkl. moms och påslag (nätavgift, elskatt m.m.)

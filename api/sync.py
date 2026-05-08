@@ -10,11 +10,19 @@ import zoneinfo
 sys.path.insert(0, os.path.dirname(__file__))
 from _db import get_db
 from _tempiro import get_devices, get_device_values
+from _alerts import update_heater_state
 
 TZ_STOCKHOLM = zoneinfo.ZoneInfo("Europe/Stockholm")
 
 
 PRICE_AREA = "SE3"
+
+
+def _authorized(headers) -> bool:
+    secret = os.environ.get("CRON_SECRET")
+    if not secret:
+        return True
+    return headers.get("Authorization") == f"Bearer {secret}"
 
 
 def sync_energy(db) -> dict:
@@ -128,17 +136,26 @@ def sync_prices(db) -> dict:
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if not _authorized(self.headers):
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": False, "error": "Unauthorized"}).encode())
+            return
+
         try:
             db = get_db()
 
             energy_result = sync_energy(db)
             price_result = sync_prices(db)
+            heater_result = update_heater_state(db, get_devices(), send_email=True)
 
             result = {
                 "ok": True,
                 "timestamp": datetime.utcnow().isoformat(),
                 "energy": energy_result,
                 "prices": price_result,
+                "heater": heater_result,
             }
 
             self.send_response(200)
@@ -147,10 +164,11 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(result).encode())
 
         except Exception as e:
+            print(f"sync failed: {e}")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
+            self.wfile.write(json.dumps({"ok": False, "error": "Sync failed"}).encode())
 
     def log_message(self, format, *args):
         pass
