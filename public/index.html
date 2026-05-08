@@ -339,14 +339,24 @@ async function toggleDevice(deviceId, value) {
     btn.disabled = true;
     btn.textContent = 'Väntar...';
     try {
-        await fetch('/api/switch', {
+        const resp = await fetch('/api/switch', {
             method: 'PUT',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({device_id: deviceId, value})
         });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            btn.textContent = `Fel ${resp.status}`;
+            btn.style.background = '#c0392b';
+            console.error('Switch error:', err);
+            setTimeout(loadDevices, 3000);
+            return;
+        }
         setTimeout(loadDevices, 2000);
     } catch(e) {
-        btn.textContent = 'Fel!';
+        btn.textContent = 'Nätverksfel';
+        btn.style.background = '#c0392b';
+        console.error('Network error:', e);
         setTimeout(loadDevices, 3000);
     }
 }
