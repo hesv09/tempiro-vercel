@@ -61,6 +61,24 @@ def sync_energy(db) -> dict:
             values = get_device_values(device_id, from_dt, to_dt)
 
             if not values:
+                current_power = device.get("CurrentValue", device.get("currentPower", device.get("current_value", 0))) or 0
+                snapshot_ts = datetime.now(TZ_STOCKHOLM).strftime("%Y-%m-%dT%H:%M:%S")
+                rows = [{
+                    "device_id": device_id,
+                    "device_name": device_name,
+                    "timestamp": snapshot_ts,
+                    "delta_power": current_power / 4,
+                    "accumulated_value": 0,
+                    "current_value": current_power,
+                }]
+                db.table("energy_readings").upsert(rows, on_conflict="device_id,timestamp").execute()
+                total_saved += len(rows)
+                db.table("sync_status").upsert({
+                    "sync_type": "energy",
+                    "device_id": device_id,
+                    "last_sync": datetime.utcnow().isoformat(),
+                }, on_conflict="sync_type,device_id").execute()
+                errors.append(f"{device_name}: no interval data, used snapshot fallback (current={current_power}W)")
                 continue
 
             # Förbered rader för upsert
