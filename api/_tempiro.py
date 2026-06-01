@@ -59,9 +59,9 @@ def get_device_values(device_id: str, from_dt: str, to_dt: str) -> list:
 def switch_device(device_id: str, value: int) -> dict:
     """Slå på/av en enhet (value: 1=på, 0=av)."""
     resp = requests.put(
-        f"{BASE_URL}/api/devices/{device_id}/switch",
+        f"{BASE_URL}/api/Switch/{device_id}",
         headers=get_headers(),
-        json={"value": value},
+        json={"Value": value, "Id": device_id},
         timeout=15,
     )
     resp.raise_for_status()

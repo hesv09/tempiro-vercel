@@ -10,11 +10,19 @@ import zoneinfo
 sys.path.insert(0, os.path.dirname(__file__))
 from _db import get_db
 from _tempiro import get_devices, get_device_values
+from _alerts import update_heater_state
 
 TZ_STOCKHOLM = zoneinfo.ZoneInfo("Europe/Stockholm")
 
 
 PRICE_AREA = "SE3"
+
+
+def _authorized(headers) -> bool:
+    secret = os.environ.get("CRON_SECRET")
+    if not secret:
+        return True
+    return headers.get("Authorization") == f"Bearer {secret}"
 
 
 def sync_energy(db) -> dict:
@@ -53,6 +61,24 @@ def sync_energy(db) -> dict:
             values = get_device_values(device_id, from_dt, to_dt)
 
             if not values:
+                current_power = device.get("CurrentValue", device.get("currentPower", device.get("current_value", 0))) or 0
+                snapshot_ts = datetime.now(TZ_STOCKHOLM).strftime("%Y-%m-%dT%H:%M:%S")
+                rows = [{
+                    "device_id": device_id,
+                    "device_name": device_name,
+                    "timestamp": snapshot_ts,
+                    "delta_power": current_power / 4,
+                    "accumulated_value": 0,
+                    "current_value": current_power,
+                }]
+                db.table("energy_readings").upsert(rows, on_conflict="device_id,timestamp").execute()
+                total_saved += len(rows)
+                db.table("sync_status").upsert({
+                    "sync_type": "energy",
+                    "device_id": device_id,
+                    "last_sync": datetime.utcnow().isoformat(),
+                }, on_conflict="sync_type,device_id").execute()
+                errors.append(f"{device_name}: no interval data, used snapshot fallback (current={current_power}W)")
                 continue
 
             # Förbered rader för upsert
@@ -128,17 +154,26 @@ def sync_prices(db) -> dict:
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if not _authorized(self.headers):
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": False, "error": "Unauthorized"}).encode())
+            return
+
         try:
             db = get_db()
 
             energy_result = sync_energy(db)
             price_result = sync_prices(db)
+            heater_result = update_heater_state(db, get_devices(), send_email=True)
 
             result = {
                 "ok": True,
                 "timestamp": datetime.utcnow().isoformat(),
                 "energy": energy_result,
                 "prices": price_result,
+                "heater": heater_result,
             }
 
             self.send_response(200)
@@ -147,10 +182,11 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(result).encode())
 
         except Exception as e:
+            print(f"sync failed: {e}")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
+            self.wfile.write(json.dumps({"ok": False, "error": "Sync failed"}).encode())
 
     def log_message(self, format, *args):
         pass

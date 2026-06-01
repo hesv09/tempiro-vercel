@@ -53,3 +53,22 @@ CREATE POLICY "Allow read" ON sync_status FOR SELECT USING (true);
 CREATE POLICY "Allow insert" ON energy_readings FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow insert" ON spot_prices FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow upsert" ON sync_status FOR ALL USING (true);
+
+-- Tabell: monthly_summaries (cache för avslutade månader)
+CREATE TABLE IF NOT EXISTS monthly_summaries (
+    id BIGSERIAL PRIMARY KEY,
+    month TEXT NOT NULL,
+    total_kwh REAL,
+    total_cost REAL,
+    avg_price_ore REAL,
+    readings INTEGER,
+    partial BOOLEAN DEFAULT false,
+    devices JSONB,
+    UNIQUE(month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_monthly_month ON monthly_summaries(month DESC);
+
+ALTER TABLE monthly_summaries ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow read" ON monthly_summaries FOR SELECT USING (true);
+CREATE POLICY "Allow upsert" ON monthly_summaries FOR ALL USING (true);
