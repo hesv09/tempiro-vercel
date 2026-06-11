@@ -61,7 +61,7 @@ def sync_energy(db) -> dict:
             values = get_device_values(device_id, from_dt, to_dt)
 
             if not values:
-                current_power = device.get("CurrentValue", device.get("currentPower", device.get("current_value", 0))) or 0
+                current_power = device.get("CurrentPower", device.get("currentPower", device.get("current_value", 0))) or 0
                 snapshot_ts = datetime.now(TZ_STOCKHOLM).strftime("%Y-%m-%dT%H:%M:%S")
                 rows = [{
                     "device_id": device_id,
