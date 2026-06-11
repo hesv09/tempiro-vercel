@@ -25,9 +25,8 @@ def _authorized(headers) -> bool:
     return headers.get("Authorization") == f"Bearer {secret}"
 
 
-def sync_energy(db) -> dict:
+def sync_energy(db, devices) -> dict:
     """Synka energidata för alla enheter."""
-    devices = get_devices()
     total_saved = 0
     errors = []
 
@@ -164,9 +163,38 @@ class handler(BaseHTTPRequestHandler):
         try:
             db = get_db()
 
-            energy_result = sync_energy(db)
-            price_result = sync_prices(db)
-            heater_result = update_heater_state(db, get_devices(), send_email=True)
+            # Hämta enheter en gång; ett Tempiro-fel ska inte stoppa övriga steg
+            devices = None
+            try:
+                devices = get_devices()
+            except Exception as e:
+                print(f"[sync] get_devices error: {e}")
+
+            if devices is not None:
+                try:
+                    energy_result = sync_energy(db, devices)
+                except Exception as e:
+                    print(f"[sync] energy error: {e}")
+                    energy_result = {"saved": 0, "errors": ["energy sync failed"]}
+            else:
+                energy_result = {"saved": 0, "errors": ["could not fetch devices"]}
+
+            try:
+                price_result = sync_prices(db)
+            except Exception as e:
+                print(f"[sync] prices error: {e}")
+                price_result = {"saved": 0, "errors": ["price sync failed"]}
+
+            # Uppdatera bara heater-state om vi faktiskt fick enhetslistan,
+            # annars riskerar vi falskt "av"-larm
+            if devices is not None:
+                try:
+                    heater_result = update_heater_state(db, devices, send_email=True)
+                except Exception as e:
+                    print(f"[sync] heater error: {e}")
+                    heater_result = {"ok": False, "error": "heater update failed"}
+            else:
+                heater_result = {"ok": False, "error": "could not fetch devices"}
 
             result = {
                 "ok": True,
