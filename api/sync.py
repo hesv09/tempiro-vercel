@@ -21,7 +21,7 @@ PRICE_AREA = "SE3"
 def _authorized(headers) -> bool:
     secret = os.environ.get("CRON_SECRET")
     if not secret:
-        return True
+        return False
     return headers.get("Authorization") == f"Bearer {secret}"
 
 
