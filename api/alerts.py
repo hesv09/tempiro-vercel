@@ -5,16 +5,14 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from _db import get_db
-from _tempiro import get_devices
-from _alerts import update_heater_state
+from _alerts import read_heater_state
 
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             db = get_db()
-            devices = get_devices()
-            heater = update_heater_state(db, devices)
+            heater = read_heater_state(db)
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")

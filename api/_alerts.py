@@ -65,6 +65,44 @@ def _upsert_status(db, sync_type: str, *, last_sync: datetime, oldest_data: date
     }, on_conflict="sync_type,device_id").execute()
 
 
+def read_heater_state(db) -> dict:
+    """Read the last persisted water heater state without writing.
+    Enhetsnamn sparas inte i sync_status, så off_devices är alltid tom här."""
+    now = _utc_now()
+    threshold = _threshold_minutes()
+    row = _status_row(db, HEATER_STATE_SYNC_TYPE)
+    off_since = _parse_dt(row.get("oldest_data")) if row else None
+
+    if off_since is None:
+        return {
+            "ok": True,
+            "severity": "ok",
+            "message": (
+                "Varmvattenberedaren är på."
+                if row else
+                "Ingen heater-status har synkats ännu."
+            ),
+            "off_since": None,
+            "off_minutes": 0,
+            "threshold_minutes": threshold,
+            "off_devices": [],
+            "last_checked": row["last_sync"] if row else None,
+        }
+
+    off_minutes = int((now - off_since).total_seconds() // 60)
+    severity = "critical" if off_minutes >= threshold else "warning"
+    return {
+        "ok": False,
+        "severity": severity,
+        "message": f"Varmvattenberedaren har varit av i cirka {off_minutes} min.",
+        "off_since": off_since.isoformat(),
+        "off_minutes": off_minutes,
+        "threshold_minutes": threshold,
+        "off_devices": [],
+        "last_checked": row["last_sync"],
+    }
+
+
 def update_heater_state(db, devices: list, *, send_email: bool = False) -> dict:
     """Persist and return the current water heater alert state."""
     now = _utc_now()
