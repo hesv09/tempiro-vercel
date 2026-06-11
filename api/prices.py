@@ -36,10 +36,11 @@ class handler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(result.data).encode())
 
         except Exception as e:
+            print(f"prices failed: {e}")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e)}).encode())
+            self.wfile.write(json.dumps({"error": "Internal server error"}).encode())
 
     def log_message(self, format, *args):
         pass
