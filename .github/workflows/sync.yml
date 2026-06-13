@@ -11,6 +11,6 @@ jobs:
     steps:
       - name: Trigger sync
         run: |
-          curl --fail --show-error --silent -o /dev/null -w "%{http_code}" \
+          curl --show-error --silent -o /dev/null -w "%{http_code}" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             "https://tempiro-vercel.vercel.app/api/sync"
