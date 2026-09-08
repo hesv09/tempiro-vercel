@@ -9,8 +9,30 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger sync
+      - name: Sync each source independently
         run: |
-          curl --show-error --silent -o /dev/null -w "%{http_code}" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "https://tempiro-vercel.vercel.app/api/sync"
+          failures=0
+
+          sync_call() {
+            label="$1"
+            query="$2"
+            echo "::group::$label"
+            if ! curl --fail-with-body --show-error --silent --max-time 55 \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+              "https://tempiro-vercel.vercel.app/api/sync?$query"; then
+              failures=$((failures + 1))
+            fi
+            echo
+            echo "::endgroup::"
+          }
+
+          sync_call "Energy VVB1" "mode=energy&device=VVB1"
+          sync_call "Energy VVB2" "mode=energy&device=VVB2"
+          sync_call "Energy VVB3" "mode=energy&device=VVB3"
+          sync_call "Spot prices" "mode=prices"
+          sync_call "Heater alert state" "mode=heater"
+
+          if [ "$failures" -gt 0 ]; then
+            echo "$failures sync call(s) failed"
+            exit 1
+          fi
